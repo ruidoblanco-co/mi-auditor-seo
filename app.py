@@ -2,139 +2,114 @@ import streamlit as st
 import google.generativeai as genai
 from docx import Document
 from io import BytesIO
+import requests
 
 # --- 1. PAGE CONFIG & IDENTITY ---
-st.set_page_config(
-    page_title="Claudio - Your SEO Consultant",
-    page_icon="🕴️", 
-    layout="wide"
-)
+st.set_page_config(page_title="Claudio - Your SEO Consultant", page_icon="🕴️", layout="wide")
 
-# --- 2. CSS STYLES (CLAUDIO'S CORPORATE THEME) ---
+# CUSTOM CSS FOR CLAUDIO (BROWN SKIN AVATAR & NAVY THEME)
 st.markdown("""
     <style>
-    .stApp {
-        background-color: #f0f2f6;
-    }
-    .claudio-avatar {
-        border-radius: 50%;
-        border: 3px solid #0E2A47;
-        box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2);
-        width: 150px;
-        display: block;
-        margin-left: auto;
-        margin-right: auto;
-    }
-    .stButton>button {
-        background-color: #0E2A47;
-        color: white;
-        border-radius: 8px;
-        font-weight: bold;
-        border: none;
-        transition: all 0.3s ease;
-    }
-    .stButton>button:hover {
-        background-color: #1c4e82;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-    }
-    .metric-card {
-        background-color: white;
-        padding: 20px;
-        border-radius: 12px;
-        border-left: 5px solid #0E2A47;
-        text-align: center;
-    }
-    h1, h2, h3 {
-        color: #0E2A47 !important;
-    }
+    .stApp { background-color: #f0f2f6; }
+    .claudio-avatar { border-radius: 50%; border: 3px solid #0E2A47; width: 150px; display: block; margin: auto; }
+    .stButton>button { background-color: #0E2A47; color: white; border-radius: 8px; font-weight: bold; height: 3em; }
+    .metric-card { background-color: white; padding: 15px; border-radius: 12px; border-left: 5px solid #0E2A47; text-align: center; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 3. KEY MANAGEMENT ---
-try:
-    AHREFS_KEY = st.secrets["AHREFS_API_KEY"]
-    GEMINI_KEY = st.secrets["GEMINI_API_KEY"]
-except:
-    st.error("⚠️ Credentials missing! Please check Streamlit Secrets.")
+# --- 2. API KEYS ---
+AHREFS_KEY = st.secrets.get("AHREFS_API_KEY", None)
+GEMINI_KEY = st.secrets.get("GEMINI_API_KEY", None)
+
+if not GEMINI_KEY:
+    st.error("⚠️ Gemini API Key is missing in Secrets!")
     st.stop()
 
-# --- 4. CLAUDIO'S HEADER ---
+# --- 3. CLAUDIO'S HEADER ---
 col_img, col_txt = st.columns([1, 4])
-
 with col_img:
-    # Professional avatar
-    st.markdown('<img src="https://cdn-icons-png.flaticon.com/512/4042/4042356.png" class="claudio-avatar">', unsafe_allow_html=True)
-
+    # Avatar de consultor con piel marrón
+    st.markdown('<img src="https://cdn-icons-png.flaticon.com/512/4042/4042424.png" class="claudio-avatar">', unsafe_allow_html=True)
 with col_txt:
     st.title("Hello, I'm Claudio.")
-    st.markdown("### Your Personal SEO Consultant, 24/7.")
-    st.write("Provide a URL, and I will prepare an executive audit report in English immediately.")
+    st.markdown("### Your Senior SEO Consultant.")
+    st.write("I'll prepare a professional audit for you. Just provide the URL.")
 
 st.markdown("---")
 
-# --- 5. MAIN INTERFACE ---
-with st.container():
-    url_input = st.text_input("🌐 Client URL to audit:", placeholder="https://example.com")
-    boton = st.button("🕴️ CLAUDIO, ANALYZE THIS!")
+# --- 4. AUDIT SELECTION LOGIC ---
+url_input = st.text_input("🌐 Target URL:", placeholder="https://example.com")
 
-if boton and url_input:
-    target = url_input.replace("https://", "").replace("http://", "").strip("/")
-    
-    with st.spinner(f'Claudio is reviewing {target}. Please stand by...'):
-        # --- DATA FETCHING (Ahrefs simulation) ---
-        dr = 52
-        backlinks = 3420
-        
-        # --- GEMINI BRAIN ---
-        genai.configure(api_key=GEMINI_KEY)
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        
-        # PROMPT IN ENGLISH
-        prompt = f"""
-        Act as Claudio, a sophisticated Senior SEO Consultant.
-        Data for {target}: DR {dr}, Backlinks {backlinks}.
-        
-        Write a professional SEO Audit in English. The tone should be expert and corporate.
-        Structure:
-        1. EXECUTIVE SUMMARY: High-level overview.
-        2. AUTHORITY ANALYSIS: Insights on DR and Link Profile.
-        3. PRIORITY ACTION TABLE: (Action | Estimated Impact | Difficulty).
-        4. TECHNICAL RECOMMENDATIONS: Top 3 things to fix.
-        
-        End the report with an elegant closing statement from a high-level consultant.
-        """
-        report_content = model.generate_content(prompt).text
-        
-        # --- VISUAL RESULTS ---
-        st.success("✅ Audit completed. Here is your summary:")
-        
-        # Claudio Style Cards
-        c1, c2, c3 = st.columns(3)
-        c1.markdown(f'<div class="metric-card"><h4>Domain Rating</h4><h2>{dr}</h2></div>', unsafe_allow_html=True)
-        c2.markdown(f'<div class="metric-card"><h4>Total Backlinks</h4><h2>{backlinks}</h2></div>', unsafe_allow_html=True)
-        c3.markdown(f'<div class="metric-card"><h4>Claudio\'s Verdict</h4><h2>Promising</h2></div>', unsafe_allow_html=True)
-        
-        st.write(" ")
-        with st.expander("📜 Preview the report on screen"):
-            st.markdown(report_content)
+# Opciones de auditoría
+if AHREFS_KEY:
+    audit_selection = st.radio("Select Audit Type:", ["Basic (Visual Overview)", "Full (Ahrefs Integration)"], index=0, horizontal=True)
+else:
+    st.warning("🕵️ Ahrefs API Key not found. Only 'Basic Visual Audit' is available.")
+    audit_selection = "Basic (Visual Overview)"
 
-        # --- WORD DOWNLOAD ---
-        doc = Document()
-        doc.add_heading(f'SEO Audit Report: {target}', 0)
-        doc.add_paragraph("Audited by: Claudio (AI Consultant)")
-        doc.add_paragraph(report_content)
-        buffer = BytesIO()
-        doc.save(buffer)
-        
-        st.download_button(
-            label="📥 DOWNLOAD OFFICIAL REPORT (DOCX)",
-            data=buffer.getvalue(),
-            file_name=f"Claudio_Audit_{target}.docx",
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        )
+# Mensaje de confirmación para auditoría Full
+confirm_full = True
+if audit_selection == "Full (Ahrefs Integration)":
+    st.info("💡 Note: This will use Ahrefs API credits.")
+    confirm_full = st.checkbox("I confirm I want to run a Full Ahrefs Audit", value=False)
 
-# --- SIDEBAR ---
+if st.button("🕴️ START AUDIT"):
+    if not url_input:
+        st.error("Please enter a URL.")
+    elif audit_selection == "Full (Ahrefs Integration)" and not confirm_full:
+        st.warning("Please check the confirmation box to proceed with the Full Audit.")
+    else:
+        with st.spinner('Claudio is working on the report...'):
+            try:
+                # Configuración de Gemini (Usando el modelo más estable para evitar el error NotFound)
+                genai.configure(api_key=GEMINI_KEY)
+                model = genai.GenerativeModel('gemini-1.5-flash-latest')
+                
+                report_content = ""
+                metrics = {"DR": "N/A", "Links": "N/A", "Type": audit_selection}
+
+                if audit_selection == "Full (Ahrefs Integration)":
+                    target = url_input.replace("https://", "").replace("http://", "").strip("/")
+                    headers = {"Authorization": f"Bearer {AHREFS_KEY}"}
+                    api_res = requests.get(f"https://api.ahrefs.com/v3/site-explorer/overview?target={target}&output=json", headers=headers)
+                    data = api_res.json()
+                    metrics["DR"] = data.get('metrics', {}).get('domain_rating', 'N/A')
+                    metrics["Links"] = data.get('metrics', {}).get('backlinks', 'N/A')
+
+                    prompt = f"Act as Claudio. Analyze {url_input} with DR {metrics['DR']} and {metrics['Links']} backlinks. Provide a deep professional SEO audit in English. Include a Priority Matrix table."
+                else:
+                    prompt = f"Act as Claudio. Provide a professional visual/strategic SEO overview for {url_input} in English. Focus on UX, Search Intent, and Quick Wins."
+                
+                response = model.generate_content(prompt)
+                report_content = response.text
+
+                # RESULTADOS VISUALES
+                st.balloons()
+                st.success(f"Audit completed: {audit_selection}")
+                
+                c1, c2, c3 = st.columns(3)
+                c1.markdown(f'<div class="metric-card"><h4>Domain Rating</h4><h2>{metrics["DR"]}</h2></div>', unsafe_allow_html=True)
+                c2.markdown(f'<div class="metric-card"><h4>Backlinks</h4><h2>{metrics["Links"]}</h2></div>', unsafe_allow_html=True)
+                c3.markdown(f'<div class="metric-card"><h4>Status</h4><p>Completed</p></div>', unsafe_allow_html=True)
+
+                with st.expander("📜 Preview Report"):
+                    st.markdown(report_content)
+
+                # DOCUMENTO WORD
+                doc = Document()
+                doc.add_heading(f'SEO Audit: {url_input}', 0)
+                doc.add_paragraph(report_content)
+                buf = BytesIO()
+                doc.save(buf)
+                st.download_button("📥 DOWNLOAD DOCX", buf.getvalue(), f"Claudio_Audit_{target if 'target' in locals() else 'basic'}.docx")
+                
+            except Exception as e:
+                st.error(f"Claudio encountered an error: {e}")
+
+# SIDEBAR
 with st.sidebar:
-    st.header("🏛️ Claudio's Office")
-    st.info("System operational and ready for new audits.")
-    st.write("Remember: SEO is not a cost, it's an investment.")
+    st.header("🏛️ Office Status")
+    if AHREFS_KEY:
+        st.success("Ahrefs API: Connected")
+    else:
+        st.error("Ahrefs API: Disconnected")
