@@ -5,101 +5,109 @@ from io import BytesIO
 import requests
 
 # --- 1. CONFIG & DARK THEME ---
-st.set_page_config(page_title="Claudio - Gemini 3 SEO", page_icon="🕴️", layout="wide")
+st.set_page_config(page_title="Claudio - SEO Consultant", page_icon="🕴️", layout="wide")
 
 st.markdown("""
     <style>
     .stApp { background-color: #0E1117 !important; color: #FFFFFF !important; }
     .claudio-avatar { border-radius: 50%; border: 3px solid #4FB3FF; width: 150px; display: block; margin: auto; }
-    .stMarkdown, p, span, label { color: #FFFFFF !important; }
+    /* Forzar visibilidad de textos */
+    .stMarkdown, p, span, label, .stSelectbox, .stRadio { color: #FFFFFF !important; }
     .stTextInput>div>div>input { color: white !important; background-color: #262730 !important; }
-    div[data-baseweb="radio"] label { color: white !important; }
     .stButton>button { background-color: #1E3A8A; color: white !important; border-radius: 8px; font-weight: bold; width: 100%; border: none; }
     .metric-card { background-color: #1A1C23; padding: 20px; border-radius: 12px; border: 1px solid #34495E; text-align: center; }
     h1, h2, h3 { color: #4FB3FF !important; }
+    /* Fix para los labels de los Radio Buttons */
+    div[data-baseweb="radio"] div { color: white !important; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. API KEYS RETRIEVAL ---
-# Usamos .get y comprobamos que no sea una cadena vacía
-GEMINI_KEY = st.secrets.get("GEMINI_API_KEY", "").strip()
-AHREFS_KEY = st.secrets.get("AHREFS_API_KEY", "").strip()
+# --- 2. API KEYS REAL CHECK ---
+def get_secret(key):
+    try:
+        val = st.secrets[key]
+        return val if val and str(val).strip() != "" else None
+    except:
+        return None
+
+GEMINI_KEY = get_secret("GEMINI_API_KEY")
+AHREFS_KEY = get_secret("AHREFS_API_KEY")
 
 # --- 3. SIDEBAR STATUS ---
 with st.sidebar:
     st.header("🏛️ Office Status")
     
-    # Estado de Gemini (Crítico)
-    if GEMINI_KEY and len(GEMINI_KEY) > 10:
-        st.success("Gemini 3 API: 🟢 Connected")
+    if GEMINI_KEY:
+        st.success("Gemini API: 🟢 Connected")
     else:
-        st.error("Gemini 3 API: 🔴 Missing")
-        st.stop() # Si no hay Gemini, la app no puede funcionar
+        st.error("Gemini API: 🔴 Missing")
+        st.stop()
 
-    # Estado de Ahrefs (Opcional)
-    has_ahrefs = False
-    if AHREFS_KEY and len(AHREFS_KEY) > 10:
-        has_ahrefs = True
+    if AHREFS_KEY:
         st.success("Ahrefs API: 🟢 Connected")
+        has_ahrefs = True
     else:
+        st.error("Ahrefs API: 🔴 Disconnected")
+        st.info("Using Basic Mode")
         has_ahrefs = False
-        st.warning("Ahrefs API: 🔴 Disconnected")
-        st.info("Using 'Basic Visual Audit' mode only.")
 
-# --- 4. HEADER ---
+# --- 4. CLAUDIO HEADER (BROWN SKIN AVATAR) ---
 col_img, col_txt = st.columns([1, 4])
 with col_img:
+    # Avatar: Persona con piel marrón y traje
     st.markdown('<img src="https://cdn-icons-png.flaticon.com/512/3135/3135715.png" class="claudio-avatar">', unsafe_allow_html=True)
 with col_txt:
-    st.title("Claudio: Powered by Gemini 3")
-    st.write("Specialized in Executive SEO Audits.")
+    st.title("Claudio: SEO Executive")
+    st.write("International SEO Strategy Consultant.")
 
 st.markdown("---")
 
 # --- 5. AUDIT INTERFACE ---
 url_input = st.text_input("🌐 Target URL:", placeholder="https://example.com")
 
-# Selección dinámica según disponibilidad de API
 if has_ahrefs:
-    audit_selection = st.radio("Choose Depth:", ["Basic (Visual Overview)", "Full (Ahrefs Integration)"], index=0, horizontal=True)
+    audit_selection = st.radio("Audit Type:", ["Basic (Visual)", "Full (Ahrefs)"], horizontal=True)
 else:
-    st.info("Mode: **Basic Visual Audit** (Ahrefs integration is disabled).")
-    audit_selection = "Basic (Visual Overview)"
+    st.info("🛡️ **Basic Visual Audit** is the only mode available without Ahrefs API.")
+    audit_selection = "Basic (Visual)"
 
-# Confirmación para auditoría Full
+# Confirmación para Ahrefs
 confirm_full = True
-if audit_selection == "Full (Ahrefs Integration)":
-    st.warning("🚨 This will consume Ahrefs API credits.")
-    confirm_full = st.checkbox("I confirm I want to perform a Full Ahrefs Audit", value=False)
+if audit_selection == "Full (Ahrefs)":
+    confirm_full = st.checkbox("I confirm I want to use Ahrefs credits", value=False)
 
 if st.button("🕴️ START AUDIT"):
     if not url_input:
-        st.error("Please enter a URL first.")
-    elif audit_selection == "Full (Ahrefs Integration)" and not confirm_full:
-        st.warning("Please check the confirmation box to proceed.")
+        st.error("Please enter a URL.")
+    elif audit_selection == "Full (Ahrefs)" and not confirm_full:
+        st.warning("Please check the confirmation box.")
     else:
-        with st.spinner('Claudio is analyzing the data...'):
+        with st.spinner('Claudio is thinking...'):
             try:
                 genai.configure(api_key=GEMINI_KEY)
-                model = genai.GenerativeModel('gemini-1.5-flash') # He vuelto a 1.5 por estabilidad, pero podemos probar gemini-3 si tu API lo admite
+                
+                # DINAMIC MODEL SELECTION (To avoid 404)
+                available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+                # Priorizar Flash, si no, el primero disponible
+                model_name = next((m for m in available_models if "flash" in m), available_models[0])
+                model = genai.GenerativeModel(model_name)
                 
                 metrics = {"DR": "N/A", "Links": "N/A"}
                 
-                if audit_selection == "Full (Ahrefs Integration)":
+                if audit_selection == "Full (Ahrefs)":
                     target = url_input.replace("https://", "").replace("http://", "").strip("/")
                     headers = {"Authorization": f"Bearer {AHREFS_KEY}"}
                     api_res = requests.get(f"https://api.ahrefs.com/v3/site-explorer/overview?target={target}&output=json", headers=headers)
                     data = api_res.json()
                     metrics["DR"] = data.get('metrics', {}).get('domain_rating', 'N/A')
                     metrics["Links"] = data.get('metrics', {}).get('backlinks', 'N/A')
-                    
-                    prompt = f"Act as Claudio. Analyze {url_input} with DR {metrics['DR']} and {metrics['Links']} backlinks. Write a professional SEO audit in English."
+                    prompt = f"Act as Claudio. Analyze {url_input} (DR: {metrics['DR']}, Links: {metrics['Links']}). Professional SEO audit in English."
                 else:
-                    prompt = f"Act as Claudio. Provide a professional visual/strategic SEO overview for {url_input} in English. Focus on UX and Strategic Wins."
+                    prompt = f"Act as Claudio. Provide a strategic visual SEO overview for {url_input} in English."
 
                 response = model.generate_content(prompt)
                 
-                # MOSTRAR RESULTADOS
+                # RESULTS
                 st.balloons()
                 c1, c2, c3 = st.columns(3)
                 c1.markdown(f'<div class="metric-card"><h4>DR</h4><h2>{metrics["DR"]}</h2></div>', unsafe_allow_html=True)
@@ -109,7 +117,6 @@ if st.button("🕴️ START AUDIT"):
                 st.markdown("### 📝 Report Preview")
                 st.markdown(response.text)
 
-                # Generar Word
                 doc = Document()
                 doc.add_heading(f'SEO Audit: {url_input}', 0)
                 doc.add_paragraph(response.text)
