@@ -4,16 +4,55 @@ from docx import Document
 from io import BytesIO
 import requests
 
-# --- 1. PAGE CONFIG & IDENTITY ---
-st.set_page_config(page_title="Claudio - Your SEO Consultant", page_icon="🕴️", layout="wide")
+# --- 1. CONFIG & DARK THEME STYLE ---
+st.set_page_config(page_title="Claudio - SEO Consultant", page_icon="🕴️", layout="wide")
 
-# CUSTOM CSS FOR CLAUDIO (BROWN SKIN AVATAR & NAVY THEME)
 st.markdown("""
     <style>
-    .stApp { background-color: #f0f2f6; }
-    .claudio-avatar { border-radius: 50%; border: 3px solid #0E2A47; width: 150px; display: block; margin: auto; }
-    .stButton>button { background-color: #0E2A47; color: white; border-radius: 8px; font-weight: bold; height: 3em; }
-    .metric-card { background-color: white; padding: 15px; border-radius: 12px; border-left: 5px solid #0E2A47; text-align: center; }
+    /* Fondo oscuro para toda la app */
+    .stApp {
+        background-color: #0E1117;
+        color: #FFFFFF;
+    }
+    /* Avatar circular */
+    .claudio-avatar {
+        border-radius: 50%;
+        border: 2px solid #34495E;
+        width: 150px;
+        display: block;
+        margin: auto;
+    }
+    /* Estilo de los inputs y radio buttons en modo oscuro */
+    .stTextInput>div>div>input {
+        color: white;
+        background-color: #262730;
+    }
+    /* Botón principal estilo corporativo */
+    .stButton>button {
+        background-color: #1E3A8A;
+        color: white;
+        border-radius: 8px;
+        font-weight: bold;
+        width: 100%;
+        border: none;
+    }
+    .stButton>button:hover {
+        background-color: #2563EB;
+        border: none;
+    }
+    /* Tarjetas de métricas para modo oscuro */
+    .metric-card {
+        background-color: #1A1C23;
+        padding: 15px;
+        border-radius: 12px;
+        border: 1px solid #34495E;
+        text-align: center;
+        color: white;
+    }
+    /* Color de los títulos */
+    h1, h2, h3, h4 {
+        color: #F8FAFC !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -28,40 +67,37 @@ if not GEMINI_KEY:
 # --- 3. CLAUDIO'S HEADER ---
 col_img, col_txt = st.columns([1, 4])
 with col_img:
-    # Avatar de consultor con piel marrón
-    st.markdown('<img src="https://cdn-icons-png.flaticon.com/512/4042/4042424.png" class="claudio-avatar">', unsafe_allow_html=True)
+    # Restaurada la imagen previa del avatar profesional
+    st.markdown('<img src="https://cdn-icons-png.flaticon.com/512/4042/4042356.png" class="claudio-avatar">', unsafe_allow_html=True)
 with col_txt:
-    st.title("Hello, I'm Claudio.")
-    st.markdown("### Your Senior SEO Consultant.")
-    st.write("I'll prepare a professional audit for you. Just provide the URL.")
+    st.title("Claudio: AI SEO Consultant")
+    st.markdown("### Delivering international executive audits.")
+    st.write("Ready to analyze your next target.")
 
 st.markdown("---")
 
-# --- 4. AUDIT SELECTION LOGIC ---
+# --- 4. AUDIT LOGIC ---
 url_input = st.text_input("🌐 Target URL:", placeholder="https://example.com")
 
-# Opciones de auditoría
 if AHREFS_KEY:
     audit_selection = st.radio("Select Audit Type:", ["Basic (Visual Overview)", "Full (Ahrefs Integration)"], index=0, horizontal=True)
 else:
     st.warning("🕵️ Ahrefs API Key not found. Only 'Basic Visual Audit' is available.")
     audit_selection = "Basic (Visual Overview)"
 
-# Mensaje de confirmación para auditoría Full
 confirm_full = True
 if audit_selection == "Full (Ahrefs Integration)":
-    st.info("💡 Note: This will use Ahrefs API credits.")
-    confirm_full = st.checkbox("I confirm I want to run a Full Ahrefs Audit", value=False)
+    st.info("💡 Note: This will consume Ahrefs API credits.")
+    confirm_full = st.checkbox("Confirm Full Ahrefs Audit", value=False)
 
 if st.button("🕴️ START AUDIT"):
     if not url_input:
         st.error("Please enter a URL.")
     elif audit_selection == "Full (Ahrefs Integration)" and not confirm_full:
-        st.warning("Please check the confirmation box to proceed with the Full Audit.")
+        st.warning("Please confirm the Ahrefs audit to proceed.")
     else:
-        with st.spinner('Claudio is working on the report...'):
+        with st.spinner('Claudio is processing...'):
             try:
-                # Configuración de Gemini (Usando el modelo más estable para evitar el error NotFound)
                 genai.configure(api_key=GEMINI_KEY)
                 model = genai.GenerativeModel('gemini-1.5-flash-latest')
                 
@@ -75,41 +111,37 @@ if st.button("🕴️ START AUDIT"):
                     data = api_res.json()
                     metrics["DR"] = data.get('metrics', {}).get('domain_rating', 'N/A')
                     metrics["Links"] = data.get('metrics', {}).get('backlinks', 'N/A')
-
-                    prompt = f"Act as Claudio. Analyze {url_input} with DR {metrics['DR']} and {metrics['Links']} backlinks. Provide a deep professional SEO audit in English. Include a Priority Matrix table."
+                    
+                    prompt = f"Act as Claudio. Analyze {url_input} with DR {metrics['DR']} and {metrics['Links']} backlinks. Detailed SEO audit in English."
                 else:
-                    prompt = f"Act as Claudio. Provide a professional visual/strategic SEO overview for {url_input} in English. Focus on UX, Search Intent, and Quick Wins."
+                    prompt = f"Act as Claudio. Provide a professional visual/strategic SEO overview for {url_input} in English. Focus on UX and Quick Wins."
                 
                 response = model.generate_content(prompt)
                 report_content = response.text
 
-                # RESULTADOS VISUALES
+                # UI RESULTS
                 st.balloons()
-                st.success(f"Audit completed: {audit_selection}")
+                st.success("Audit Completed Successfully.")
                 
                 c1, c2, c3 = st.columns(3)
                 c1.markdown(f'<div class="metric-card"><h4>Domain Rating</h4><h2>{metrics["DR"]}</h2></div>', unsafe_allow_html=True)
                 c2.markdown(f'<div class="metric-card"><h4>Backlinks</h4><h2>{metrics["Links"]}</h2></div>', unsafe_allow_html=True)
-                c3.markdown(f'<div class="metric-card"><h4>Status</h4><p>Completed</p></div>', unsafe_allow_html=True)
+                c3.markdown(f'<div class="metric-card"><h4>Audit Type</h4><p>{metrics["Type"]}</p></div>', unsafe_allow_html=True)
 
                 with st.expander("📜 Preview Report"):
                     st.markdown(report_content)
 
-                # DOCUMENTO WORD
                 doc = Document()
                 doc.add_heading(f'SEO Audit: {url_input}', 0)
                 doc.add_paragraph(report_content)
                 buf = BytesIO()
                 doc.save(buf)
-                st.download_button("📥 DOWNLOAD DOCX", buf.getvalue(), f"Claudio_Audit_{target if 'target' in locals() else 'basic'}.docx")
+                st.download_button("📥 DOWNLOAD REPORT (DOCX)", buf.getvalue(), f"Claudio_Audit.docx")
                 
             except Exception as e:
-                st.error(f"Claudio encountered an error: {e}")
+                st.error(f"Error: {e}")
 
 # SIDEBAR
 with st.sidebar:
-    st.header("🏛️ Office Status")
-    if AHREFS_KEY:
-        st.success("Ahrefs API: Connected")
-    else:
-        st.error("Ahrefs API: Disconnected")
+    st.header("Office Status")
+    st.write("Ahrefs API:", "🟢 Connected" if AHREFS_KEY else "🔴 Disconnected")
