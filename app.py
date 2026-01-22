@@ -1,6 +1,10 @@
 import streamlit as st
 import time
 from datetime import datetime
+import os
+import requests
+from bs4 import BeautifulSoup
+import google.generativeai as genai
 
 # ===========================
 # 🎨 CONFIGURACIÓN DE PÁGINA
@@ -11,6 +15,29 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# ===========================
+# 🔑 CONFIGURACIÓN DE APIs
+# ===========================
+try:
+    GEMINI_API_KEY = st.secrets["GOOGLE_API_KEY"]
+    genai.configure(api_key=GEMINI_API_KEY)
+    GEMINI_DISPONIBLE = True
+except Exception as e:
+    GEMINI_DISPONIBLE = False
+    st.error(f"⚠️ Gemini API no configurada: {e}")
+
+try:
+    CLAUDE_API_KEY = st.secrets.get("ANTHROPIC_API_KEY", "")
+    CLAUDE_DISPONIBLE = bool(CLAUDE_API_KEY)
+except:
+    CLAUDE_DISPONIBLE = False
+
+try:
+    AHREFS_API_KEY = st.secrets.get("AHREFS_API_KEY", "")
+    AHREFS_DISPONIBLE = bool(AHREFS_API_KEY)
+except:
+    AHREFS_DISPONIBLE = False
 
 # ===========================
 # 🎨 CSS PERSONALIZADO
@@ -161,237 +188,201 @@ def mostrar_avatar():
     """, unsafe_allow_html=True)
 
 # ===========================
-# 📊 FUNCIONES DE SIMULACIÓN
+# 🔍 FUNCIONES DE ANÁLISIS WEB
 # ===========================
-def simular_auditoria_basic(url, modelo):
-    """Simula una auditoría básica"""
-    progress_bar = st.progress(0)
-    status_text = st.empty()
+def analizar_sitio_basico(url):
+    """Analiza el sitio web extrayendo información básica del HTML"""
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+        response = requests.get(url, headers=headers, timeout=10)
+        soup = BeautifulSoup(response.content, 'html.parser')
+        
+        # Extraer información
+        analisis = {
+            'url': url,
+            'status_code': response.status_code,
+            'title': soup.title.string if soup.title else 'No title found',
+            'meta_description': '',
+            'h1_tags': [],
+            'h2_tags': [],
+            'images_without_alt': 0,
+            'total_images': 0,
+            'internal_links': 0,
+            'external_links': 0,
+            'word_count': 0
+        }
+        
+        # Meta description
+        meta_desc = soup.find('meta', attrs={'name': 'description'})
+        if meta_desc:
+            analisis['meta_description'] = meta_desc.get('content', '')
+        
+        # H1 y H2
+        analisis['h1_tags'] = [h1.get_text().strip() for h1 in soup.find_all('h1')]
+        analisis['h2_tags'] = [h2.get_text().strip() for h2 in soup.find_all('h2')][:5]  # Primeros 5
+        
+        # Imágenes
+        images = soup.find_all('img')
+        analisis['total_images'] = len(images)
+        analisis['images_without_alt'] = len([img for img in images if not img.get('alt')])
+        
+        # Links
+        links = soup.find_all('a', href=True)
+        for link in links:
+            href = link['href']
+            if href.startswith('http') and url not in href:
+                analisis['external_links'] += 1
+            elif href.startswith('/') or url in href:
+                analisis['internal_links'] += 1
+        
+        # Contar palabras
+        text = soup.get_text()
+        analisis['word_count'] = len(text.split())
+        
+        return analisis
+        
+    except Exception as e:
+        return {'error': str(e)}
+
+# ===========================
+# 🤖 FUNCIONES DE IA
+# ===========================
+def generar_auditoria_con_gemini(url, datos_sitio, tipo_auditoria):
+    """Genera auditoría usando Gemini"""
     
-    steps = [
-        ("Conectando con el sitio web...", 20),
-        ("Analizando estructura HTML...", 40),
-        ("Evaluando meta tags y headings...", 60),
-        (f"Generando análisis con {modelo}...", 80),
-        ("Preparando reporte final...", 100)
-    ]
-    
-    for step, progress in steps:
-        status_text.text(step)
-        progress_bar.progress(progress)
-        time.sleep(0.8)
-    
-    status_text.empty()
-    progress_bar.empty()
-    
-    return """
-# 📊 Auditoría SEO Básica - Ejemplo.com
+    try:
+        model = genai.GenerativeModel("gemini-2.0-flash-exp")
+        
+        # Preparar el prompt según el tipo
+        if tipo_auditoria == "Basic":
+            prompt = f"""
+Eres Claudio, un experto auditor SEO profesional. Analiza el siguiente sitio web y genera una auditoría SEO BÁSICA completa y profesional.
+
+**DATOS DEL SITIO:**
+URL: {datos_sitio.get('url', url)}
+Title: {datos_sitio.get('title', 'N/A')}
+Meta Description: {datos_sitio.get('meta_description', 'No meta description found')}
+H1 Tags: {', '.join(datos_sitio.get('h1_tags', [])) if datos_sitio.get('h1_tags') else 'None found'}
+H2 Tags (primeros 5): {', '.join(datos_sitio.get('h2_tags', []))}
+Total Imágenes: {datos_sitio.get('total_images', 0)}
+Imágenes sin ALT: {datos_sitio.get('images_without_alt', 0)}
+Links Internos: {datos_sitio.get('internal_links', 0)}
+Links Externos: {datos_sitio.get('external_links', 0)}
+Total Palabras: {datos_sitio.get('word_count', 0)}
+
+**INSTRUCCIONES:**
+Genera un informe de auditoría SEO profesional siguiendo EXACTAMENTE esta estructura:
+
+# 📊 Auditoría SEO Básica - [Nombre del sitio]
 
 ## 🎯 Executive Summary
 
-**Puntuación General**: 68/100
+**Puntuación General**: [X]/100
 
-El sitio presenta una base sólida pero con oportunidades significativas de mejora en optimización on-page y estructura técnica.
+[Resumen de 2-3 párrafos sobre el estado general del sitio]
 
 ### Hallazgos Clave:
-- ✅ **Fortalezas**: Velocidad de carga aceptable, mobile-friendly
-- ⚠️ **Oportunidades**: Meta descriptions faltantes, estructura H1 inconsistente
-- 🔴 **Crítico**: 15 páginas sin indexar, sitemap.xml desactualizado
+- ✅ **Fortalezas**: [Lista 2-3 puntos fuertes]
+- ⚠️ **Oportunidades**: [Lista 2-3 áreas de mejora]
+- 🔴 **Crítico**: [Lista 1-2 problemas urgentes]
 
 ---
 
-## 🔍 Análisis Técnico
+## 🔍 Análisis Técnico SEO
 
 ### Meta Tags
-- **Title tags**: 85% optimizados
-- **Meta descriptions**: 45% faltantes (URGENTE)
-- **Canonical tags**: Implementados correctamente
+- **Title Tag**: [Análisis del title - longitud, keywords, optimización]
+- **Meta Description**: [Análisis - existe, longitud, llamada a la acción]
+- **Open Graph**: [Si se detecta o recomendar implementar]
 
 ### Estructura de Contenido
-- **H1**: Presente en 70% de páginas
-- **H2-H6**: Jerarquía inconsistente
-- **Imágenes sin ALT**: 23 detectadas
+- **H1**: [Análisis de H1s encontrados]
+- **H2-H6**: [Análisis de jerarquía]
+- **Densidad de contenido**: [Análisis basado en word count]
 
-### Performance
-- **Load Time**: 2.3s (Aceptable)
-- **Mobile Score**: 78/100
-- **Core Web Vitals**: Needs improvement
+### Optimización de Imágenes
+- Total de imágenes: {datos_sitio.get('total_images', 0)}
+- Sin atributo ALT: {datos_sitio.get('images_without_alt', 0)}
+- [Recomendaciones específicas]
 
----
-
-## 📋 Recomendaciones Priorizadas
-
-### Critical (Hacer YA)
-1. Añadir meta descriptions a 18 páginas principales
-2. Corregir estructura H1 en páginas de producto
-3. Actualizar sitemap.xml
-
-### High Priority
-4. Optimizar imágenes (WebP + lazy loading)
-5. Implementar schema markup
-6. Mejorar linking interno
+### Arquitectura de Enlaces
+- Links internos: {datos_sitio.get('internal_links', 0)}
+- Links externos: {datos_sitio.get('external_links', 0)}
+- [Análisis de linking strategy]
 
 ---
 
-**Análisis generado por**: {modelo}
+## 📋 Plan de Acción Priorizado
+
+### 🔴 CRITICAL (Hacer inmediatamente)
+1. **[Título de la acción]**
+   - Descripción: [Qué hacer]
+   - Esfuerzo: [X] horas
+   - Impacto: Alto/Medio/Bajo
+   - Acción: [Pasos específicos]
+
+[Continuar con 2-3 acciones críticas más]
+
+### 🟡 HIGH PRIORITY (Próximas 1-2 semanas)
+[Listar 3-4 acciones de alta prioridad con el mismo formato]
+
+### 🟢 MEDIUM PRIORITY (Mes 1-2)
+[Listar 2-3 acciones de prioridad media]
+
+---
+
+## 🎯 Recomendaciones Estratégicas
+
+[2-3 párrafos con recomendaciones estratégicas generales basadas en el análisis]
+
+---
+
+**Tipo de Análisis**: Basic (Visual)
+**Generado por**: Gemini 2.0 Flash
+**Fecha**: {datetime.now().strftime("%d/%m/%Y %H:%M")}
+
+IMPORTANTE: 
+- Sé específico y profesional
+- Basa TODO en los datos proporcionados
+- Si algo falta, indícalo como oportunidad de mejora
+- Numera todas las acciones
+- Usa emojis solo donde indicado en la estructura
+"""
+        else:  # Full
+            prompt = f"""
+Eres Claudio, un experto auditor SEO profesional. Genera una auditoría SEO COMPLETA ultra-profesional.
+
+**DATOS BÁSICOS DEL SITIO:**
+{datos_sitio}
+
+**NOTA**: Esta es una auditoría FULL pero aún no tenemos datos de Ahrefs API. 
+Por ahora genera la auditoría con los datos disponibles y añade secciones que DEBERÍAN incluir datos de Ahrefs
+indicando claramente que esos datos se añadirán cuando esté conectada la API.
+
+Sigue la misma estructura que Basic pero añade estas secciones:
+
+## 📊 Métricas de Autoridad (Pendiente Ahrefs API)
+[Explicar qué métricas se mostrarán aquí: DR, backlinks, referring domains, etc.]
+
+## 🔗 Perfil de Backlinks (Pendiente Ahrefs API)
+[Explicar qué análisis se hará aquí]
+
+## 📈 Rendimiento Orgánico (Pendiente Ahrefs API)
+[Explicar qué datos de keywords y traffic se mostrarán]
+
+Genera el resto del análisis basado en datos disponibles.
+
 **Fecha**: {datetime.now().strftime("%d/%m/%Y %H:%M")}
 """
-
-def simular_auditoria_full(url, modelo):
-    """Simula una auditoría completa con Ahrefs"""
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    
-    steps = [
-        ("Conectando con el sitio web...", 15),
-        ("Obteniendo datos de Ahrefs API...", 30),
-        ("Analizando backlink profile...", 45),
-        ("Evaluando keywords ranking...", 60),
-        ("Analizando competencia...", 75),
-        (f"Generando análisis profundo con {modelo}...", 90),
-        ("Preparando reportes completos...", 100)
-    ]
-    
-    for step, progress in steps:
-        status_text.text(step)
-        progress_bar.progress(progress)
-        time.sleep(1)
-    
-    status_text.empty()
-    progress_bar.empty()
-    
-    return """
-# 🏆 Auditoría SEO Completa - Ejemplo.com
-
-## 📈 Executive Summary
-
-**Puntuación General**: 72/100
-**Domain Rating**: 45/100
-**Estimated Monthly Traffic**: ~12,500 visits
-
-### Métricas Clave (Ahrefs):
-- 🔗 **Backlinks**: 1,247 (↑ 15% vs mes anterior)
-- 🌐 **Referring Domains**: 89
-- 📊 **Organic Keywords**: 342 keywords ranking
-- 💰 **Traffic Value**: $3,400/month
-
-### Posicionamiento:
-- Top 3: 12 keywords
-- Top 10: 45 keywords  
-- Top 100: 342 keywords
-
----
-
-## 🔍 Análisis Técnico Completo
-
-### SEO On-Page (68/100)
-- Title tags: 85% optimizados
-- Meta descriptions: 45% faltantes ⚠️
-- H1 structure: Necesita mejoras
-- Image optimization: 67% completado
-
-### Backlink Profile (75/100)
-**Calidad General**: Buena
-
-**Top Referring Domains**:
-1. industry-blog.com (DR 67) - 15 backlinks
-2. tech-news.net (DR 58) - 8 backlinks
-3. partner-site.io (DR 52) - 12 backlinks
-
-**Anchor Text Distribution**:
-- Branded: 45%
-- Naked URL: 30%
-- Keywords: 20%
-- Other: 5%
-
-⚠️ **Broken Backlinks**: 23 enlaces rotos detectados (oportunidad de recuperación)
-
-### Organic Performance
-
-**Top Performing Pages**:
-1. /blog/guia-seo → 2,300 visits/mes
-2. /productos/servicio-premium → 1,800 visits/mes
-3. /recursos/herramientas → 1,200 visits/mes
-
-**Keyword Opportunities** (gaps detectados):
-- "seo para ecommerce" - Vol: 1,200 - Difficulty: 35 - Posición actual: #15
-- "optimización web" - Vol: 890 - Difficulty: 42 - Posición actual: #12
-- "marketing digital" - Vol: 5,400 - Difficulty: 68 - Posición actual: #28
-
-### Análisis Competitivo
-
-**Principales Competidores**:
-1. competitor-a.com - DR 62 - Overlap: 78 keywords
-2. competitor-b.com - DR 55 - Overlap: 45 keywords
-3. competitor-c.com - DR 51 - Overlap: 34 keywords
-
-**Keywords que ellos rankean y tú no**:
-- 15 oportunidades de contenido identificadas
-- Potencial traffic: ~3,500 visits/mes adicionales
-
----
-
-## 🎯 Plan de Acción Estratégico
-
-### 🔴 CRITICAL (Semana 1-2)
-
-1. **Recuperar Broken Backlinks** (23 enlaces)
-   - Esfuerzo: 4 horas
-   - Impacto: Alto - Recuperar ~15 DR points
-   - Acción: Contactar webmasters + redirecciones 301
-
-2. **Optimizar Meta Descriptions** (18 páginas)
-   - Esfuerzo: 3 horas
-   - Impacto: Medio-Alto - Mejorar CTR 15-20%
-   - Acción: Escribir descriptions con keywords objetivo
-
-3. **Fix H1 Structure** (12 páginas productos)
-   - Esfuerzo: 2 horas
-   - Impacto: Medio
-   - Acción: Un H1 único y optimizado por página
-
-### 🟡 HIGH PRIORITY (Semana 3-4)
-
-4. **Crear Contenido para Keyword Gaps**
-   - Target: "seo para ecommerce", "optimización web"
-   - Esfuerzo: 12 horas
-   - Impacto: Alto - Potencial +2,000 visits/mes
-   - Acción: 2 artículos de 2,000+ palabras
-
-5. **Link Building Campaign**
-   - Objetivo: +15 backlinks de DR 40+
-   - Esfuerzo: 20 horas
-   - Impacto: Alto - Mejorar DR a 50+
-   - Estrategia: Guest posting + digital PR
-
-6. **Implementar Schema Markup**
-   - Tipos: Organization, Product, Article
-   - Esfuerzo: 6 horas
-   - Impacto: Medio - Rich snippets en SERPs
-
-### 🟢 MEDIUM PRIORITY (Mes 2)
-
-7. Optimización técnica de imágenes
-8. Mejora de Core Web Vitals
-9. Ampliar linking interno
-10. Crear pillar content
-
----
-
-## 📊 Proyección de Resultados (3 meses)
-
-**Si se implementa el plan completo**:
-- Domain Rating: 45 → 52 (+7 puntos)
-- Organic Traffic: 12,500 → 18,000 visits/mes (+44%)
-- Keywords Top 10: 45 → 75 (+67%)
-- Traffic Value: $3,400 → $5,200/mes
-
----
-
-**Análisis generado por**: {modelo}
-**Powered by**: Ahrefs API + AI Analysis
-**Fecha**: {datetime.now().strftime("%d/%m/%Y %H:%M")}
-"""
+        
+        # Generar contenido
+        response = model.generate_content(prompt)
+        return response.text
+        
+    except Exception as e:
+        return f"❌ Error generando auditoría con Gemini: {str(e)}"
 
 # ===========================
 # 🎨 SIDEBAR - OFFICE STATUS
@@ -406,22 +397,17 @@ with st.sidebar:
     # Office Status
     st.markdown("### 🏢 Office Status")
     
-    # Simulación de estado de APIs (hardcoded para preview)
-    gemini_status = True  # Cambiar a True/False para probar
-    claude_status = False  # Cambiar a True/False para probar
-    ahrefs_status = False  # Cambiar a True/False para probar
-    
-    if gemini_status:
+    if GEMINI_DISPONIBLE:
         st.markdown('<span class="status-badge status-connected">🟢 Gemini Connected</span>', unsafe_allow_html=True)
     else:
         st.markdown('<span class="status-badge status-disconnected">🔴 Gemini Offline</span>', unsafe_allow_html=True)
     
-    if claude_status:
+    if CLAUDE_DISPONIBLE:
         st.markdown('<span class="status-badge status-connected">🟢 Claude Connected</span>', unsafe_allow_html=True)
     else:
         st.markdown('<span class="status-badge status-disconnected">🔴 Claude Offline</span>', unsafe_allow_html=True)
     
-    if ahrefs_status:
+    if AHREFS_DISPONIBLE:
         st.markdown('<span class="status-badge status-connected">🟢 Ahrefs Connected</span>', unsafe_allow_html=True)
     else:
         st.markdown('<span class="status-badge status-optional">⚠️ Ahrefs Optional</span>', unsafe_allow_html=True)
@@ -454,7 +440,7 @@ st.markdown("# 🔍 SEO Audit Generator")
 st.markdown("*Professional SEO audits powered by AI*")
 st.markdown("---")
 
-# Métricas superiores (placeholders)
+# Métricas superiores (placeholders por ahora)
 col1, col2, col3, col4 = st.columns(4)
 with col1:
     st.metric("Audits Today", "0", "+0")
@@ -497,13 +483,25 @@ st.markdown("### 🤖 AI Model Selection")
 col1, col2 = st.columns([2, 1])
 
 with col1:
-    modelo_seleccionado = st.selectbox(
-        "Choose AI Model",
-        [
-            "⚡ Gemini 2.0 Flash (Free)",
+    # Filtrar modelos según disponibilidad
+    modelos_disponibles = []
+    
+    if GEMINI_DISPONIBLE:
+        modelos_disponibles.append("⚡ Gemini 2.0 Flash (Free)")
+    
+    if CLAUDE_DISPONIBLE:
+        modelos_disponibles.extend([
             "🎯 Claude Sonnet 4.5 (~$0.18)",
             "👑 Claude Opus 4.5 (~$0.50)"
-        ],
+        ])
+    
+    if not modelos_disponibles:
+        st.error("❌ No AI models configured. Please add API keys in Streamlit Secrets.")
+        st.stop()
+    
+    modelo_seleccionado = st.selectbox(
+        "Choose AI Model",
+        modelos_disponibles,
         help="Gemini: Fast and free\nSonnet: Best quality/price\nOpus: Maximum quality"
     )
 
@@ -542,8 +540,12 @@ url_input = st.text_input(
 
 # Confirmación para Full Audit
 if "Full" in tipo_auditoria:
-    st.warning("⚠️ **Full Audit will use Ahrefs API credits**")
-    confirmar_ahrefs = st.checkbox("✓ I confirm the use of Ahrefs API", value=False)
+    if AHREFS_DISPONIBLE:
+        st.warning("⚠️ **Full Audit will use Ahrefs API credits**")
+        confirmar_ahrefs = st.checkbox("✓ I confirm the use of Ahrefs API", value=False)
+    else:
+        st.warning("⚠️ **Ahrefs API not configured**. Full audit will generate report structure but without Ahrefs data.")
+        confirmar_ahrefs = True
 else:
     confirmar_ahrefs = True  # No necesita confirmación en Basic
 
@@ -562,28 +564,49 @@ with col2:
         
         if not url_input:
             st.error("❌ Please enter a URL")
-        elif "Full" in tipo_auditoria and not confirmar_ahrefs:
+        elif "Full" in tipo_auditoria and AHREFS_DISPONIBLE and not confirmar_ahrefs:
             st.error("❌ Please confirm Ahrefs API usage")
         else:
-            # Determinar modelo a usar
-            if "Gemini" in modelo_seleccionado:
-                modelo_nombre = "Gemini 2.0 Flash"
-            elif "Sonnet" in modelo_seleccionado:
-                modelo_nombre = "Claude Sonnet 4.5"
-            else:
-                modelo_nombre = "Claude Opus 4.5"
-            
-            # Ejecutar auditoría según tipo
             st.markdown("---")
-            st.markdown("## 📊 Audit Results")
+            st.markdown("## 📊 Audit in Progress")
             
-            with st.spinner(""):
-                if "Basic" in tipo_auditoria:
-                    resultado = simular_auditoria_basic(url_input, modelo_nombre)
-                else:
-                    resultado = simular_auditoria_full(url_input, modelo_nombre)
+            # Barra de progreso
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            # Paso 1: Analizar sitio
+            status_text.text("🔍 Analyzing website...")
+            progress_bar.progress(30)
+            datos_sitio = analizar_sitio_basico(url_input)
+            time.sleep(1)
+            
+            if 'error' in datos_sitio:
+                st.error(f"❌ Error analyzing website: {datos_sitio['error']}")
+                st.stop()
+            
+            # Paso 2: Generar con IA
+            status_text.text("🤖 Generating audit with AI...")
+            progress_bar.progress(60)
+            
+            tipo = "Basic" if "Basic" in tipo_auditoria else "Full"
+            
+            # Por ahora solo Gemini está implementado
+            if "Gemini" in modelo_seleccionado:
+                resultado = generar_auditoria_con_gemini(url_input, datos_sitio, tipo)
+            else:
+                st.warning("⚠️ Claude implementation coming soon. Using Gemini for now.")
+                resultado = generar_auditoria_con_gemini(url_input, datos_sitio, tipo)
+            
+            progress_bar.progress(100)
+            status_text.text("✅ Audit completed!")
+            time.sleep(0.5)
+            
+            progress_bar.empty()
+            status_text.empty()
             
             # Mostrar resultado
+            st.markdown("---")
+            st.markdown("## 📊 Audit Results")
             st.success("✅ Audit completed successfully!")
             
             # Tabs para organizar resultados
