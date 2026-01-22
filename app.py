@@ -7,144 +7,166 @@ from bs4 import BeautifulSoup
 import google.generativeai as genai
 
 # ===========================
-# 🎨 CONFIGURACIÓN DE PÁGINA
+# 🎨 PAGE CONFIGURATION
 # ===========================
 st.set_page_config(
-    page_title="Claudio - AI SEO Auditor",
+    page_title="Claudio - Professional SEO Auditor",
     page_icon="👔",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 # ===========================
-# 🔑 CONFIGURACIÓN DE APIs
+# 🔑 API CONFIGURATION
 # ===========================
 try:
     GEMINI_API_KEY = st.secrets["GOOGLE_API_KEY"]
     genai.configure(api_key=GEMINI_API_KEY)
-    GEMINI_DISPONIBLE = True
+    GEMINI_AVAILABLE = True
 except Exception as e:
-    GEMINI_DISPONIBLE = False
-    st.error(f"⚠️ Gemini API no configurada: {e}")
+    GEMINI_AVAILABLE = False
+    st.error(f"⚠️ Gemini API not configured: {e}")
 
 try:
     CLAUDE_API_KEY = st.secrets.get("ANTHROPIC_API_KEY", "")
-    CLAUDE_DISPONIBLE = bool(CLAUDE_API_KEY)
+    CLAUDE_AVAILABLE = bool(CLAUDE_API_KEY)
 except:
-    CLAUDE_DISPONIBLE = False
+    CLAUDE_AVAILABLE = False
 
 try:
     AHREFS_API_KEY = st.secrets.get("AHREFS_API_KEY", "")
-    AHREFS_DISPONIBLE = bool(AHREFS_API_KEY)
+    AHREFS_AVAILABLE = bool(AHREFS_API_KEY)
 except:
-    AHREFS_DISPONIBLE = False
+    AHREFS_AVAILABLE = False
 
 # ===========================
-# 🎨 CSS PERSONALIZADO
+# 🎨 CUSTOM CSS
 # ===========================
 st.markdown("""
 <style>
-    /* Fondo oscuro corporativo */
+    /* Professional dark gray background */
     .stApp {
-        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        background: linear-gradient(135deg, #2b2d42 0%, #1a1b26 100%);
     }
     
-    /* Sidebar oscuro */
+    /* Sidebar dark */
     [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #0f3460 0%, #16213e 100%);
+        background: linear-gradient(180deg, #1a1b26 0%, #121318 100%);
     }
     
-    /* Cards de métricas */
+    /* Metric cards */
     [data-testid="stMetricValue"] {
-        font-size: 28px;
-        color: #00d4ff;
-        font-weight: 700;
+        font-size: 24px;
+        color: #60a5fa;
+        font-weight: 600;
     }
     
     [data-testid="stMetricLabel"] {
-        color: #a0aec0;
-        font-size: 14px;
+        color: #94a3b8;
+        font-size: 13px;
         font-weight: 500;
     }
     
-    /* Botones personalizados */
+    /* Custom buttons */
     .stButton>button {
         width: 100%;
-        background: linear-gradient(90deg, #00d4ff 0%, #0091ff 100%);
+        background: linear-gradient(90deg, #60a5fa 0%, #3b82f6 100%);
         color: white;
         font-weight: 600;
         border: none;
-        padding: 12px 24px;
-        border-radius: 8px;
-        font-size: 16px;
+        padding: 10px 20px;
+        border-radius: 6px;
+        font-size: 15px;
         transition: all 0.3s ease;
     }
     
     .stButton>button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 16px rgba(0, 212, 255, 0.3);
+        transform: translateY(-1px);
+        box-shadow: 0 6px 12px rgba(96, 165, 250, 0.3);
     }
     
     /* Inputs */
     .stTextInput>div>div>input {
         background-color: rgba(255, 255, 255, 0.05);
         color: white;
-        border: 1px solid rgba(0, 212, 255, 0.3);
-        border-radius: 8px;
-        padding: 10px;
+        border: 1px solid rgba(96, 165, 250, 0.3);
+        border-radius: 6px;
+        padding: 8px;
+        font-size: 14px;
     }
     
     .stTextInput>div>div>input:focus {
-        border-color: #00d4ff;
-        box-shadow: 0 0 0 2px rgba(0, 212, 255, 0.2);
+        border-color: #60a5fa;
+        box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.2);
     }
     
     /* Selectbox */
     .stSelectbox>div>div>div {
         background-color: rgba(255, 255, 255, 0.05);
         color: white;
-        border-radius: 8px;
+        border-radius: 6px;
+        font-size: 14px;
     }
     
     /* Radio buttons */
     .stRadio>div {
         background-color: rgba(255, 255, 255, 0.03);
-        padding: 15px;
-        border-radius: 8px;
-        border: 1px solid rgba(0, 212, 255, 0.2);
+        padding: 12px;
+        border-radius: 6px;
+        border: 1px solid rgba(96, 165, 250, 0.2);
     }
     
     /* Info boxes */
     .stAlert {
-        background-color: rgba(0, 212, 255, 0.1);
-        border-left: 4px solid #00d4ff;
+        background-color: rgba(96, 165, 250, 0.1);
+        border-left: 3px solid #60a5fa;
         border-radius: 4px;
     }
     
-    /* Títulos */
+    /* Titles */
     h1 {
-        color: #00d4ff;
+        color: #60a5fa;
         font-weight: 700;
-        text-shadow: 0 0 20px rgba(0, 212, 255, 0.3);
     }
     
     h2, h3 {
-        color: #ffffff;
+        color: #e2e8f0;
     }
     
-    /* Avatar personalizado de Claudio */
-    .claudio-avatar {
-        width: 80px;
-        height: 80px;
+    /* Header logo and title */
+    .claudio-header {
+        text-align: center;
+        padding: 20px 0 30px 0;
+        margin-bottom: 30px;
+        border-bottom: 2px solid rgba(96, 165, 250, 0.2);
+    }
+    
+    .claudio-avatar-large {
+        width: 100px;
+        height: 100px;
         border-radius: 50%;
         background: linear-gradient(135deg, #8B4513 0%, #654321 100%);
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 40px;
-        margin: 0 auto 20px;
-        border: 3px solid #00d4ff;
-        box-shadow: 0 4px 12px rgba(0, 212, 255, 0.3);
+        font-size: 50px;
+        margin: 0 auto 15px;
+        border: 4px solid #60a5fa;
+        box-shadow: 0 4px 12px rgba(96, 165, 250, 0.3);
+    }
+    
+    .claudio-title {
+        font-size: 42px;
+        font-weight: 700;
+        color: #60a5fa;
+        margin: 10px 0 5px 0;
+        letter-spacing: -1px;
+    }
+    
+    .claudio-subtitle {
+        font-size: 18px;
+        color: #94a3b8;
+        font-weight: 400;
     }
     
     /* Status badges */
@@ -174,24 +196,67 @@ st.markdown("""
         color: #fbbf24;
         border: 1px solid #fbbf24;
     }
+    
+    /* Audit report styling */
+    .audit-report {
+        background-color: rgba(255, 255, 255, 0.03);
+        padding: 30px;
+        border-radius: 8px;
+        border: 1px solid rgba(96, 165, 250, 0.2);
+        line-height: 1.8;
+    }
+    
+    .audit-report h1 {
+        color: #60a5fa;
+        border-bottom: 2px solid rgba(96, 165, 250, 0.3);
+        padding-bottom: 10px;
+        margin-bottom: 20px;
+    }
+    
+    .audit-report h2 {
+        color: #93c5fd;
+        margin-top: 30px;
+        margin-bottom: 15px;
+    }
+    
+    .audit-report h3 {
+        color: #bfdbfe;
+        margin-top: 20px;
+        margin-bottom: 10px;
+    }
+    
+    .audit-report ul, .audit-report ol {
+        margin-left: 20px;
+    }
+    
+    .audit-report li {
+        margin-bottom: 8px;
+    }
+    
+    .audit-report hr {
+        border: none;
+        border-top: 1px solid rgba(96, 165, 250, 0.2);
+        margin: 25px 0;
+    }
+    
+    .audit-report strong {
+        color: #dbeafe;
+    }
+    
+    /* Labels more subtle */
+    .stRadio label, .stSelectbox label {
+        font-size: 13px;
+        color: #94a3b8;
+        font-weight: 500;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 # ===========================
-# 🎭 AVATAR DE CLAUDIO
+# 🔍 WEB ANALYSIS FUNCTIONS
 # ===========================
-def mostrar_avatar():
-    st.markdown("""
-    <div class="claudio-avatar">
-        👔
-    </div>
-    """, unsafe_allow_html=True)
-
-# ===========================
-# 🔍 FUNCIONES DE ANÁLISIS WEB
-# ===========================
-def analizar_sitio_basico(url):
-    """Analiza el sitio web extrayendo información básica del HTML"""
+def analyze_basic_site(url):
+    """Analyzes the website extracting basic information from HTML"""
     try:
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
@@ -199,8 +264,8 @@ def analizar_sitio_basico(url):
         response = requests.get(url, headers=headers, timeout=10)
         soup = BeautifulSoup(response.content, 'html.parser')
         
-        # Extraer información
-        analisis = {
+        # Extract information
+        analysis = {
             'url': url,
             'status_code': response.status_code,
             'title': soup.title.string if soup.title else 'No title found',
@@ -217,209 +282,202 @@ def analizar_sitio_basico(url):
         # Meta description
         meta_desc = soup.find('meta', attrs={'name': 'description'})
         if meta_desc:
-            analisis['meta_description'] = meta_desc.get('content', '')
+            analysis['meta_description'] = meta_desc.get('content', '')
         
-        # H1 y H2
-        analisis['h1_tags'] = [h1.get_text().strip() for h1 in soup.find_all('h1')]
-        analisis['h2_tags'] = [h2.get_text().strip() for h2 in soup.find_all('h2')][:5]  # Primeros 5
+        # H1 and H2
+        analysis['h1_tags'] = [h1.get_text().strip() for h1 in soup.find_all('h1')]
+        analysis['h2_tags'] = [h2.get_text().strip() for h2 in soup.find_all('h2')][:5]  # First 5
         
-        # Imágenes
+        # Images
         images = soup.find_all('img')
-        analisis['total_images'] = len(images)
-        analisis['images_without_alt'] = len([img for img in images if not img.get('alt')])
+        analysis['total_images'] = len(images)
+        analysis['images_without_alt'] = len([img for img in images if not img.get('alt')])
         
         # Links
         links = soup.find_all('a', href=True)
         for link in links:
             href = link['href']
             if href.startswith('http') and url not in href:
-                analisis['external_links'] += 1
+                analysis['external_links'] += 1
             elif href.startswith('/') or url in href:
-                analisis['internal_links'] += 1
+                analysis['internal_links'] += 1
         
-        # Contar palabras
+        # Word count
         text = soup.get_text()
-        analisis['word_count'] = len(text.split())
+        analysis['word_count'] = len(text.split())
         
-        return analisis
+        return analysis
         
     except Exception as e:
         return {'error': str(e)}
 
 # ===========================
-# 🤖 FUNCIONES DE IA
+# 🤖 AI FUNCTIONS
 # ===========================
-def generar_auditoria_con_gemini(url, datos_sitio, tipo_auditoria):
-    """Genera auditoría usando Gemini"""
+def generate_audit_with_gemini(url, site_data, audit_type):
+    """Generates audit using Gemini"""
     
     try:
         model = genai.GenerativeModel("gemini-2.0-flash-exp")
         
-        # Preparar el prompt según el tipo
-        if tipo_auditoria == "Basic":
+        # Prepare prompt according to type
+        if audit_type == "Basic":
             prompt = f"""
-Eres Claudio, un experto auditor SEO profesional. Analiza el siguiente sitio web y genera una auditoría SEO BÁSICA completa y profesional.
+You are Claudio, an expert professional SEO auditor. Analyze the following website and generate a complete and professional BASIC SEO audit.
 
-**DATOS DEL SITIO:**
-URL: {datos_sitio.get('url', url)}
-Title: {datos_sitio.get('title', 'N/A')}
-Meta Description: {datos_sitio.get('meta_description', 'No meta description found')}
-H1 Tags: {', '.join(datos_sitio.get('h1_tags', [])) if datos_sitio.get('h1_tags') else 'None found'}
-H2 Tags (primeros 5): {', '.join(datos_sitio.get('h2_tags', []))}
-Total Imágenes: {datos_sitio.get('total_images', 0)}
-Imágenes sin ALT: {datos_sitio.get('images_without_alt', 0)}
-Links Internos: {datos_sitio.get('internal_links', 0)}
-Links Externos: {datos_sitio.get('external_links', 0)}
-Total Palabras: {datos_sitio.get('word_count', 0)}
+**SITE DATA:**
+URL: {site_data.get('url', url)}
+Title: {site_data.get('title', 'N/A')}
+Meta Description: {site_data.get('meta_description', 'No meta description found')}
+H1 Tags: {', '.join(site_data.get('h1_tags', [])) if site_data.get('h1_tags') else 'None found'}
+H2 Tags (first 5): {', '.join(site_data.get('h2_tags', []))}
+Total Images: {site_data.get('total_images', 0)}
+Images without ALT: {site_data.get('images_without_alt', 0)}
+Internal Links: {site_data.get('internal_links', 0)}
+External Links: {site_data.get('external_links', 0)}
+Total Words: {site_data.get('word_count', 0)}
 
-**INSTRUCCIONES:**
-Genera un informe de auditoría SEO profesional siguiendo EXACTAMENTE esta estructura:
+**INSTRUCTIONS:**
+Generate a professional SEO audit report following EXACTLY this structure:
 
-# 📊 Auditoría SEO Básica - [Nombre del sitio]
+# 📊 Basic SEO Audit - [Site Name]
 
 ## 🎯 Executive Summary
 
-**Puntuación General**: [X]/100
+**Overall Score**: [X]/100
 
-[Resumen de 2-3 párrafos sobre el estado general del sitio]
+[2-3 paragraph summary about the general state of the site]
 
-### Hallazgos Clave:
-- ✅ **Fortalezas**: [Lista 2-3 puntos fuertes]
-- ⚠️ **Oportunidades**: [Lista 2-3 áreas de mejora]
-- 🔴 **Crítico**: [Lista 1-2 problemas urgentes]
+### Key Findings:
+- ✅ **Strengths**: [List 2-3 strong points]
+- ⚠️ **Opportunities**: [List 2-3 areas for improvement]
+- 🔴 **Critical**: [List 1-2 urgent issues]
 
 ---
 
-## 🔍 Análisis Técnico SEO
+## 🔍 Technical SEO Analysis
 
 ### Meta Tags
-- **Title Tag**: [Análisis del title - longitud, keywords, optimización]
-- **Meta Description**: [Análisis - existe, longitud, llamada a la acción]
-- **Open Graph**: [Si se detecta o recomendar implementar]
+- **Title Tag**: [Analysis of title - length, keywords, optimization]
+- **Meta Description**: [Analysis - exists, length, call to action]
+- **Open Graph**: [If detected or recommend implementation]
 
-### Estructura de Contenido
-- **H1**: [Análisis de H1s encontrados]
-- **H2-H6**: [Análisis de jerarquía]
-- **Densidad de contenido**: [Análisis basado en word count]
+### Content Structure
+- **H1**: [Analysis of found H1s]
+- **H2-H6**: [Hierarchy analysis]
+- **Content Density**: [Analysis based on word count]
 
-### Optimización de Imágenes
-- Total de imágenes: {datos_sitio.get('total_images', 0)}
-- Sin atributo ALT: {datos_sitio.get('images_without_alt', 0)}
-- [Recomendaciones específicas]
+### Image Optimization
+- Total images: {site_data.get('total_images', 0)}
+- Without ALT attribute: {site_data.get('images_without_alt', 0)}
+- [Specific recommendations]
 
-### Arquitectura de Enlaces
-- Links internos: {datos_sitio.get('internal_links', 0)}
-- Links externos: {datos_sitio.get('external_links', 0)}
-- [Análisis de linking strategy]
-
----
-
-## 📋 Plan de Acción Priorizado
-
-### 🔴 CRITICAL (Hacer inmediatamente)
-1. **[Título de la acción]**
-   - Descripción: [Qué hacer]
-   - Esfuerzo: [X] horas
-   - Impacto: Alto/Medio/Bajo
-   - Acción: [Pasos específicos]
-
-[Continuar con 2-3 acciones críticas más]
-
-### 🟡 HIGH PRIORITY (Próximas 1-2 semanas)
-[Listar 3-4 acciones de alta prioridad con el mismo formato]
-
-### 🟢 MEDIUM PRIORITY (Mes 1-2)
-[Listar 2-3 acciones de prioridad media]
+### Link Architecture
+- Internal links: {site_data.get('internal_links', 0)}
+- External links: {site_data.get('external_links', 0)}
+- [Linking strategy analysis]
 
 ---
 
-## 🎯 Recomendaciones Estratégicas
+## 📋 Prioritized Action Plan
 
-[2-3 párrafos con recomendaciones estratégicas generales basadas en el análisis]
+### 🔴 CRITICAL (Do immediately)
+1. **[Action Title]**
+   - Description: [What to do]
+   - Effort: [X] hours
+   - Impact: High/Medium/Low
+   - Action: [Specific steps]
+
+[Continue with 2-3 more critical actions]
+
+### 🟡 HIGH PRIORITY (Next 1-2 weeks)
+[List 3-4 high priority actions with same format]
+
+### 🟢 MEDIUM PRIORITY (Month 1-2)
+[List 2-3 medium priority actions]
 
 ---
 
-**Tipo de Análisis**: Basic (Visual)
-**Generado por**: Gemini 2.0 Flash
-**Fecha**: {datetime.now().strftime("%d/%m/%Y %H:%M")}
+## 🎯 Strategic Recommendations
 
-IMPORTANTE: 
-- Sé específico y profesional
-- Basa TODO en los datos proporcionados
-- Si algo falta, indícalo como oportunidad de mejora
-- Numera todas las acciones
-- Usa emojis solo donde indicado en la estructura
+[2-3 paragraphs with general strategic recommendations based on the analysis]
+
+---
+
+**Analysis Type**: Basic (Visual)
+**Generated by**: Gemini 2.0 Flash
+**Date**: {datetime.now().strftime("%m/%d/%Y %H:%M")}
+
+IMPORTANT: 
+- Be specific and professional
+- Base EVERYTHING on the provided data
+- If something is missing, indicate it as an improvement opportunity
+- Number all actions
+- Use emojis only where indicated in the structure
+- Generate the ENTIRE audit in ENGLISH language
 """
         else:  # Full
             prompt = f"""
-Eres Claudio, un experto auditor SEO profesional. Genera una auditoría SEO COMPLETA ultra-profesional.
+You are Claudio, an expert professional SEO auditor. Generate an ultra-professional COMPLETE SEO audit.
 
-**DATOS BÁSICOS DEL SITIO:**
-{datos_sitio}
+**BASIC SITE DATA:**
+{site_data}
 
-**NOTA**: Esta es una auditoría FULL pero aún no tenemos datos de Ahrefs API. 
-Por ahora genera la auditoría con los datos disponibles y añade secciones que DEBERÍAN incluir datos de Ahrefs
-indicando claramente que esos datos se añadirán cuando esté conectada la API.
+**NOTE**: This is a FULL audit but we don't have Ahrefs API data yet. 
+For now, generate the audit with available data and add sections that SHOULD include Ahrefs data
+clearly indicating that this data will be added when the API is connected.
 
-Sigue la misma estructura que Basic pero añade estas secciones:
+Follow the same structure as Basic but add these sections:
 
-## 📊 Métricas de Autoridad (Pendiente Ahrefs API)
-[Explicar qué métricas se mostrarán aquí: DR, backlinks, referring domains, etc.]
+## 📊 Authority Metrics (Pending Ahrefs API)
+[Explain what metrics will be shown here: DR, backlinks, referring domains, etc.]
 
-## 🔗 Perfil de Backlinks (Pendiente Ahrefs API)
-[Explicar qué análisis se hará aquí]
+## 🔗 Backlink Profile (Pending Ahrefs API)
+[Explain what analysis will be done here]
 
-## 📈 Rendimiento Orgánico (Pendiente Ahrefs API)
-[Explicar qué datos de keywords y traffic se mostrarán]
+## 📈 Organic Performance (Pending Ahrefs API)
+[Explain what keyword and traffic data will be shown]
 
-Genera el resto del análisis basado en datos disponibles.
+Generate the rest of the analysis based on available data.
 
-**Fecha**: {datetime.now().strftime("%d/%m/%Y %H:%M")}
+**Date**: {datetime.now().strftime("%m/%d/%Y %H:%M")}
+
+IMPORTANT: Generate the ENTIRE audit in ENGLISH language.
 """
         
-        # Generar contenido
+        # Generate content
         response = model.generate_content(prompt)
         return response.text
         
     except Exception as e:
-        return f"❌ Error generando auditoría con Gemini: {str(e)}"
+        return f"❌ Error generating audit with Gemini: {str(e)}"
 
 # ===========================
-# 🎨 SIDEBAR - OFFICE STATUS
+# 🎨 SIDEBAR - STATUS
 # ===========================
 with st.sidebar:
-    mostrar_avatar()
+    st.markdown("### 🏢 System Status")
     
-    st.markdown("### 👔 Claudio AI")
-    st.markdown("*Professional SEO Auditor*")
-    st.markdown("---")
-    
-    # Office Status
-    st.markdown("### 🏢 Office Status")
-    
-    if GEMINI_DISPONIBLE:
+    if GEMINI_AVAILABLE:
         st.markdown('<span class="status-badge status-connected">🟢 Gemini Connected</span>', unsafe_allow_html=True)
     else:
         st.markdown('<span class="status-badge status-disconnected">🔴 Gemini Offline</span>', unsafe_allow_html=True)
     
-    if CLAUDE_DISPONIBLE:
+    if CLAUDE_AVAILABLE:
         st.markdown('<span class="status-badge status-connected">🟢 Claude Connected</span>', unsafe_allow_html=True)
     else:
         st.markdown('<span class="status-badge status-disconnected">🔴 Claude Offline</span>', unsafe_allow_html=True)
     
-    if AHREFS_DISPONIBLE:
+    if AHREFS_AVAILABLE:
         st.markdown('<span class="status-badge status-connected">🟢 Ahrefs Connected</span>', unsafe_allow_html=True)
     else:
         st.markdown('<span class="status-badge status-optional">⚠️ Ahrefs Optional</span>', unsafe_allow_html=True)
     
     st.markdown("---")
     
-    # Info
     st.markdown("### ℹ️ About")
     st.markdown("""
-    **Claudio** is your AI-powered SEO auditor.
-    
-    Generate professional SEO audits in seconds.
+    **Claudio** generates professional SEO audits in seconds.
     
     **Features**:
     - 🔍 Basic visual analysis
@@ -429,173 +487,134 @@ with st.sidebar:
     """)
     
     st.markdown("---")
-    st.markdown("*v2.0 - Premium Edition*")
+    st.caption("v2.0 - Professional Edition")
 
 # ===========================
 # 🎯 MAIN INTERFACE
 # ===========================
 
-# Header
-st.markdown("# 🔍 SEO Audit Generator")
-st.markdown("*Professional SEO audits powered by AI*")
-st.markdown("---")
-
-# Métricas superiores (placeholders por ahora)
-col1, col2, col3, col4 = st.columns(4)
-with col1:
-    st.metric("Audits Today", "0", "+0")
-with col2:
-    st.metric("Total Audits", "0", "")
-with col3:
-    st.metric("Avg. Score", "-", "")
-with col4:
-    st.metric("Time Saved", "0h", "")
-
-st.markdown("---")
+# Header with logo
+st.markdown("""
+<div class="claudio-header">
+    <div class="claudio-avatar-large">👔</div>
+    <div class="claudio-title">CLAUDIO</div>
+    <div class="claudio-subtitle">Professional SEO Auditor</div>
+</div>
+""", unsafe_allow_html=True)
 
 # ===========================
-# 🎛️ CONFIGURACIÓN
+# 🎛️ CONFIGURATION
 # ===========================
-
-# Tipo de auditoría
-st.markdown("### 📋 Audit Configuration")
 
 col1, col2 = st.columns([2, 1])
 
 with col1:
-    tipo_auditoria = st.radio(
-        "Select Audit Type",
+    audit_type = st.radio(
+        "Audit Type",
         ["🔍 Basic (Visual Analysis)", "💎 Full (With Ahrefs Data)"],
-        help="Basic: Quick visual analysis without API costs\nFull: Complete analysis with Ahrefs metrics"
+        help="Basic: Quick visual analysis\nFull: Complete analysis with Ahrefs metrics"
     )
 
 with col2:
-    if "Full" in tipo_auditoria:
-        st.info("**Full Audit**\n\nIncludes:\n- Domain Rating\n- Backlinks\n- Keywords\n- Traffic data\n- Competitors")
+    if "Full" in audit_type:
+        st.info("**Full Audit**\n\n✓ Domain Rating\n✓ Backlinks\n✓ Keywords\n✓ Traffic data")
     else:
-        st.info("**Basic Audit**\n\nIncludes:\n- Technical SEO\n- On-page analysis\n- Content review\n- Quick insights")
+        st.info("**Basic Audit**\n\n✓ Technical SEO\n✓ On-page analysis\n✓ Content review")
 
 st.markdown("---")
 
-# Selector de modelo IA
-st.markdown("### 🤖 AI Model Selection")
-
-col1, col2 = st.columns([2, 1])
+# AI Model selector (compact)
+col1, col2 = st.columns([3, 1])
 
 with col1:
-    # Filtrar modelos según disponibilidad
-    modelos_disponibles = []
+    # Filter models according to availability
+    available_models = []
     
-    if GEMINI_DISPONIBLE:
-        modelos_disponibles.append("⚡ Gemini 2.0 Flash (Free)")
+    if GEMINI_AVAILABLE:
+        available_models.append("⚡ Gemini 2.0 Flash")
     
-    if CLAUDE_DISPONIBLE:
-        modelos_disponibles.extend([
-            "🎯 Claude Sonnet 4.5 (~$0.18)",
-            "👑 Claude Opus 4.5 (~$0.50)"
+    if CLAUDE_AVAILABLE:
+        available_models.extend([
+            "🎯 Claude Sonnet 4.5",
+            "👑 Claude Opus 4.5"
         ])
     
-    if not modelos_disponibles:
+    if not available_models:
         st.error("❌ No AI models configured. Please add API keys in Streamlit Secrets.")
         st.stop()
     
-    modelo_seleccionado = st.selectbox(
-        "Choose AI Model",
-        modelos_disponibles,
-        help="Gemini: Fast and free\nSonnet: Best quality/price\nOpus: Maximum quality"
+    selected_model = st.selectbox(
+        "AI Model",
+        available_models,
+        help="Choose the AI model for analysis"
     )
-
-with col2:
-    # Cálculo de costo estimado
-    if "Gemini" in modelo_seleccionado:
-        costo = 0.00
-        velocidad = "⚡⚡⚡ Ultra Fast"
-        calidad = "⭐⭐⭐ Good"
-    elif "Sonnet" in modelo_seleccionado:
-        costo = 0.18
-        velocidad = "⚡⚡ Fast"
-        calidad = "⭐⭐⭐⭐ Excellent"
-    else:  # Opus
-        costo = 0.50
-        velocidad = "⚡ Moderate"
-        calidad = "⭐⭐⭐⭐⭐ Premium"
-    
-    st.metric("💰 Estimated Cost", f"${costo:.2f}")
-    st.caption(f"**Speed**: {velocidad}")
-    st.caption(f"**Quality**: {calidad}")
 
 st.markdown("---")
 
-# ===========================
-# 🌐 URL INPUT
-# ===========================
-
-st.markdown("### 🌐 Website to Audit")
-
+# URL Input (compact)
 url_input = st.text_input(
-    "Enter URL",
+    "Website URL",
     placeholder="https://example.com",
     help="Enter the full URL including https://"
 )
 
-# Confirmación para Full Audit
-if "Full" in tipo_auditoria:
-    if AHREFS_DISPONIBLE:
-        st.warning("⚠️ **Full Audit will use Ahrefs API credits**")
-        confirmar_ahrefs = st.checkbox("✓ I confirm the use of Ahrefs API", value=False)
+# Confirmation for Full Audit
+if "Full" in audit_type:
+    if AHREFS_AVAILABLE:
+        st.warning("⚠️ Full Audit will use Ahrefs API credits")
+        confirm_ahrefs = st.checkbox("✓ Confirm Ahrefs API usage", value=False)
     else:
-        st.warning("⚠️ **Ahrefs API not configured**. Full audit will generate report structure but without Ahrefs data.")
-        confirmar_ahrefs = True
+        st.warning("⚠️ Ahrefs API not configured. Full audit will generate report structure without Ahrefs data.")
+        confirm_ahrefs = True
 else:
-    confirmar_ahrefs = True  # No necesita confirmación en Basic
+    confirm_ahrefs = True
 
 st.markdown("---")
 
 # ===========================
-# 🚀 BOTÓN DE AUDITORÍA
+# 🚀 AUDIT BUTTON
 # ===========================
 
 col1, col2, col3 = st.columns([1, 2, 1])
 
 with col2:
-    boton_disabled = not url_input or not confirmar_ahrefs
+    button_disabled = not url_input or not confirm_ahrefs
     
-    if st.button("🚀 Generate Audit", disabled=boton_disabled, use_container_width=True):
+    if st.button("🚀 Generate Audit", disabled=button_disabled, use_container_width=True):
         
         if not url_input:
             st.error("❌ Please enter a URL")
-        elif "Full" in tipo_auditoria and AHREFS_DISPONIBLE and not confirmar_ahrefs:
+        elif "Full" in audit_type and AHREFS_AVAILABLE and not confirm_ahrefs:
             st.error("❌ Please confirm Ahrefs API usage")
         else:
             st.markdown("---")
-            st.markdown("## 📊 Audit in Progress")
             
-            # Barra de progreso
+            # Progress bar
             progress_bar = st.progress(0)
             status_text = st.empty()
             
-            # Paso 1: Analizar sitio
+            # Step 1: Analyze site
             status_text.text("🔍 Analyzing website...")
             progress_bar.progress(30)
-            datos_sitio = analizar_sitio_basico(url_input)
+            site_data = analyze_basic_site(url_input)
             time.sleep(1)
             
-            if 'error' in datos_sitio:
-                st.error(f"❌ Error analyzing website: {datos_sitio['error']}")
+            if 'error' in site_data:
+                st.error(f"❌ Error analyzing website: {site_data['error']}")
                 st.stop()
             
-            # Paso 2: Generar con IA
+            # Step 2: Generate with AI
             status_text.text("🤖 Generating audit with AI...")
             progress_bar.progress(60)
             
-            tipo = "Basic" if "Basic" in tipo_auditoria else "Full"
+            type_audit = "Basic" if "Basic" in audit_type else "Full"
             
-            # Por ahora solo Gemini está implementado
-            if "Gemini" in modelo_seleccionado:
-                resultado = generar_auditoria_con_gemini(url_input, datos_sitio, tipo)
+            # For now only Gemini is implemented
+            if "Gemini" in selected_model:
+                result = generate_audit_with_gemini(url_input, site_data, type_audit)
             else:
                 st.warning("⚠️ Claude implementation coming soon. Using Gemini for now.")
-                resultado = generar_auditoria_con_gemini(url_input, datos_sitio, tipo)
+                result = generate_audit_with_gemini(url_input, site_data, type_audit)
             
             progress_bar.progress(100)
             status_text.text("✅ Audit completed!")
@@ -604,16 +623,17 @@ with col2:
             progress_bar.empty()
             status_text.empty()
             
-            # Mostrar resultado
+            # Show result
             st.markdown("---")
-            st.markdown("## 📊 Audit Results")
             st.success("✅ Audit completed successfully!")
             
-            # Tabs para organizar resultados
+            # Tabs to organize results
             tab1, tab2 = st.tabs(["📄 Full Report", "📥 Download"])
             
             with tab1:
-                st.markdown(resultado)
+                st.markdown('<div class="audit-report">', unsafe_allow_html=True)
+                st.markdown(result)
+                st.markdown('</div>', unsafe_allow_html=True)
             
             with tab2:
                 st.markdown("### Download Options")
@@ -626,8 +646,8 @@ with col2:
                     **Includes**:
                     - Executive Summary
                     - Complete Analysis
-                    - Strategic Recommendations
-                    - Professional Formatting
+                    - Recommendations
+                    - Professional Format
                     """)
                     st.button("📥 Download .docx", disabled=True, help="Coming soon!")
                 
@@ -635,7 +655,7 @@ with col2:
                     st.markdown("#### 📊 Excel Spreadsheet")
                     st.info("""
                     **Includes**:
-                    - Task List (prioritized)
+                    - Prioritized Tasks
                     - Technical Issues
                     - SEO Opportunities
                     - Tracking Checkboxes
@@ -643,7 +663,7 @@ with col2:
                     st.button("📥 Download .xlsx", disabled=True, help="Coming soon!")
                 
                 st.markdown("---")
-                st.caption("*Document generation will be enabled in the next version*")
+                st.caption("*Document generation will be enabled soon*")
 
 # ===========================
 # 📊 FOOTER
@@ -653,12 +673,12 @@ st.markdown("---")
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    st.markdown("**Claudio AI SEO Auditor**")
+    st.markdown("**Claudio SEO Auditor**")
     st.caption("Professional audits in seconds")
 
 with col2:
     st.markdown("**Powered by**")
-    st.caption("Anthropic Claude • Google Gemini • Ahrefs")
+    st.caption("Anthropic • Google • Ahrefs")
 
 with col3:
     st.markdown("**Need help?**")
