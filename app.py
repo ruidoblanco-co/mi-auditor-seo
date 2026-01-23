@@ -1491,7 +1491,6 @@ with col2:
             context["basic_onpage"] = site_data
             prompt_text = build_prompt("Basic", context)
             raw_text = run_llm_text(selected_model, prompt_text)
-            st.error(f"🐛 Prompt: {len(prompt_text)} chars | Response: {len(raw_text or '')} chars | Content: {raw_text[:200]}")
             audit_content = raw_text  # expected Markdown findings document
         else:
             # Full prompt expected JSON (for placeholders)
@@ -1778,4 +1777,5 @@ with col2:
 with col3:
     st.markdown("**Need help?**")
     st.caption("[Documentation](#) • [Support](#)")
+
 
