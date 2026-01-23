@@ -5,7 +5,6 @@ import requests
 from bs4 import BeautifulSoup
 import google.generativeai as genai
 from docx import Document
-from docxtpl import DocxTemplate
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
 from io import BytesIO
@@ -900,3 +899,4 @@ with col2:
 with col3:
     st.markdown("**Need help?**")
     st.caption("[Documentation](#) • [Support](#)")
+
