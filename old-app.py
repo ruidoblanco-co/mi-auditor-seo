@@ -1,14 +1,10 @@
 import streamlit as st
 import time
 from datetime import datetime
+import os
 import requests
 from bs4 import BeautifulSoup
 import google.generativeai as genai
-from docx import Document
-import openpyxl
-from openpyxl.styles import Font, PatternFill, Alignment
-from io import BytesIO
-import re
 
 # ===========================
 # 🎨 PAGE CONFIGURATION
@@ -29,6 +25,7 @@ try:
     GEMINI_AVAILABLE = True
 except Exception as e:
     GEMINI_AVAILABLE = False
+    st.error(f"⚠️ Gemini API not configured: {e}")
 
 try:
     CLAUDE_API_KEY = st.secrets.get("ANTHROPIC_API_KEY", "")
@@ -47,14 +44,17 @@ except:
 # ===========================
 st.markdown("""
 <style>
+    /* Professional dark gray background */
     .stApp {
         background: linear-gradient(135deg, #2b2d42 0%, #1a1b26 100%);
     }
     
+    /* Sidebar dark */
     [data-testid="stSidebar"] {
         background: linear-gradient(180deg, #1a1b26 0%, #121318 100%);
     }
     
+    /* Metric cards */
     [data-testid="stMetricValue"] {
         font-size: 24px;
         color: #60a5fa;
@@ -67,6 +67,7 @@ st.markdown("""
         font-weight: 500;
     }
     
+    /* Custom buttons */
     .stButton>button {
         width: 100%;
         background: linear-gradient(90deg, #60a5fa 0%, #3b82f6 100%);
@@ -84,6 +85,7 @@ st.markdown("""
         box-shadow: 0 6px 12px rgba(96, 165, 250, 0.3);
     }
     
+    /* Inputs */
     .stTextInput>div>div>input {
         background-color: rgba(255, 255, 255, 0.05);
         color: white;
@@ -93,6 +95,12 @@ st.markdown("""
         font-size: 14px;
     }
     
+    .stTextInput>div>div>input:focus {
+        border-color: #60a5fa;
+        box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.2);
+    }
+    
+    /* Selectbox */
     .stSelectbox>div>div>div {
         background-color: rgba(255, 255, 255, 0.05);
         color: white;
@@ -100,6 +108,7 @@ st.markdown("""
         font-size: 14px;
     }
     
+    /* Radio buttons */
     .stRadio>div {
         background-color: rgba(255, 255, 255, 0.03);
         padding: 12px;
@@ -107,6 +116,14 @@ st.markdown("""
         border: 1px solid rgba(96, 165, 250, 0.2);
     }
     
+    /* Info boxes */
+    .stAlert {
+        background-color: rgba(96, 165, 250, 0.1);
+        border-left: 3px solid #60a5fa;
+        border-radius: 4px;
+    }
+    
+    /* Titles */
     h1 {
         color: #60a5fa;
         font-weight: 700;
@@ -116,6 +133,7 @@ st.markdown("""
         color: #e2e8f0;
     }
     
+    /* Header logo and title */
     .claudio-header {
         text-align: center;
         padding: 20px 0 30px 0;
@@ -151,6 +169,7 @@ st.markdown("""
         font-weight: 400;
     }
     
+    /* Status badges */
     .status-badge {
         display: inline-block;
         padding: 4px 12px;
@@ -178,6 +197,7 @@ st.markdown("""
         border: 1px solid #fbbf24;
     }
     
+    /* Audit report styling */
     .audit-report {
         background-color: rgba(255, 255, 255, 0.03);
         padding: 30px;
@@ -205,6 +225,25 @@ st.markdown("""
         margin-bottom: 10px;
     }
     
+    .audit-report ul, .audit-report ol {
+        margin-left: 20px;
+    }
+    
+    .audit-report li {
+        margin-bottom: 8px;
+    }
+    
+    .audit-report hr {
+        border: none;
+        border-top: 1px solid rgba(96, 165, 250, 0.2);
+        margin: 25px 0;
+    }
+    
+    .audit-report strong {
+        color: #dbeafe;
+    }
+    
+    /* Labels more subtle */
     .stRadio label, .stSelectbox label {
         font-size: 13px;
         color: #94a3b8;
@@ -212,109 +251,6 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
-
-# ===========================
-# 🔍 AHREFS API FUNCTIONS
-# ===========================
-def get_ahrefs_data(domain):
-    """Get comprehensive data from Ahrefs API"""
-    
-    if not AHREFS_AVAILABLE:
-        return None
-    
-    headers = {
-        "Authorization": f"Bearer {AHREFS_API_KEY}",
-        "Accept": "application/json"
-    }
-    
-    # Clean domain
-    domain = domain.replace('https://', '').replace('http://', '').replace('www.', '').split('/')[0]
-    
-    ahrefs_data = {
-        'domain': domain,
-        'domain_rating': 0,
-        'url_rating': 0,
-        'backlinks': 0,
-        'referring_domains': 0,
-        'organic_keywords': 0,
-        'organic_traffic': 0,
-        'top_keywords': [],
-        'top_pages': [],
-        'backlink_sample': []
-    }
-    
-    try:
-        # Domain metrics
-        metrics_url = "https://api.ahrefs.com/v3/site-explorer/metrics"
-        metrics_params = {
-            "target": domain,
-            "date": datetime.now().strftime("%Y-%m-%d")
-        }
-        
-        response = requests.get(metrics_url, headers=headers, params=metrics_params, timeout=30)
-        if response.status_code == 200:
-            data = response.json()
-            if 'metrics' in data:
-                m = data['metrics']
-                ahrefs_data['domain_rating'] = m.get('domain_rating', 0)
-                ahrefs_data['url_rating'] = m.get('url_rating', 0)
-                ahrefs_data['backlinks'] = m.get('backlinks', 0)
-                ahrefs_data['referring_domains'] = m.get('refdomains', 0)
-                ahrefs_data['organic_keywords'] = m.get('organic_keywords', 0)
-                ahrefs_data['organic_traffic'] = m.get('organic_traffic', 0)
-        
-        time.sleep(1)
-        
-        # Top keywords
-        keywords_url = "https://api.ahrefs.com/v3/site-explorer/organic-keywords"
-        keywords_params = {
-            "target": domain,
-            "limit": 20,
-            "order_by": "volume:desc"
-        }
-        
-        response = requests.get(keywords_url, headers=headers, params=keywords_params, timeout=30)
-        if response.status_code == 200:
-            data = response.json()
-            if 'keywords' in data:
-                ahrefs_data['top_keywords'] = data['keywords'][:10]
-        
-        time.sleep(1)
-        
-        # Top pages
-        pages_url = "https://api.ahrefs.com/v3/site-explorer/top-pages"
-        pages_params = {
-            "target": domain,
-            "limit": 10
-        }
-        
-        response = requests.get(pages_url, headers=headers, params=pages_params, timeout=30)
-        if response.status_code == 200:
-            data = response.json()
-            if 'pages' in data:
-                ahrefs_data['top_pages'] = data['pages'][:5]
-        
-        time.sleep(1)
-        
-        # Backlink sample
-        backlinks_url = "https://api.ahrefs.com/v3/site-explorer/all-backlinks"
-        backlinks_params = {
-            "target": domain,
-            "limit": 10,
-            "order_by": "domain_rating:desc"
-        }
-        
-        response = requests.get(backlinks_url, headers=headers, params=backlinks_params, timeout=30)
-        if response.status_code == 200:
-            data = response.json()
-            if 'backlinks' in data:
-                ahrefs_data['backlink_sample'] = data['backlinks'][:5]
-        
-        return ahrefs_data
-        
-    except Exception as e:
-        st.warning(f"⚠️ Ahrefs API error: {str(e)}")
-        return ahrefs_data  # Return with defaults
 
 # ===========================
 # 🔍 WEB ANALYSIS FUNCTIONS
@@ -328,6 +264,7 @@ def analyze_basic_site(url):
         response = requests.get(url, headers=headers, timeout=10)
         soup = BeautifulSoup(response.content, 'html.parser')
         
+        # Extract information
         analysis = {
             'url': url,
             'status_code': response.status_code,
@@ -342,17 +279,21 @@ def analyze_basic_site(url):
             'word_count': 0
         }
         
+        # Meta description
         meta_desc = soup.find('meta', attrs={'name': 'description'})
         if meta_desc:
             analysis['meta_description'] = meta_desc.get('content', '')
         
+        # H1 and H2
         analysis['h1_tags'] = [h1.get_text().strip() for h1 in soup.find_all('h1')]
-        analysis['h2_tags'] = [h2.get_text().strip() for h2 in soup.find_all('h2')][:5]
+        analysis['h2_tags'] = [h2.get_text().strip() for h2 in soup.find_all('h2')][:5]  # First 5
         
+        # Images
         images = soup.find_all('img')
         analysis['total_images'] = len(images)
         analysis['images_without_alt'] = len([img for img in images if not img.get('alt')])
         
+        # Links
         links = soup.find_all('a', href=True)
         for link in links:
             href = link['href']
@@ -361,6 +302,7 @@ def analyze_basic_site(url):
             elif href.startswith('/') or url in href:
                 analysis['internal_links'] += 1
         
+        # Word count
         text = soup.get_text()
         analysis['word_count'] = len(text.split())
         
@@ -370,312 +312,148 @@ def analyze_basic_site(url):
         return {'error': str(e)}
 
 # ===========================
-# 🤖 AI AUDIT GENERATION
+# 🤖 AI FUNCTIONS
 # ===========================
-def generate_audit_content(url, site_data, ahrefs_data, audit_type):
-    """Generates structured audit data using Gemini"""
+def generate_audit_with_gemini(url, site_data, audit_type):
+    """Generates audit using Gemini"""
     
     try:
         model = genai.GenerativeModel("gemini-2.0-flash-exp")
         
-        site_name = url.replace('https://', '').replace('http://', '').replace('www.', '').split('/')[0]
-        
+        # Prepare prompt according to type
         if audit_type == "Basic":
             prompt = f"""
-You are Claudio, an expert SEO auditor. Generate a BASIC SEO audit for: {site_name}
+You are Claudio, an expert professional SEO auditor. Analyze the following website and generate a complete and professional BASIC SEO audit.
 
 **SITE DATA:**
-- Title: {site_data.get('title')}
-- Meta Description: {site_data.get('meta_description', 'Missing')}
-- H1 Tags: {len(site_data.get('h1_tags', []))} found
-- Total Images: {site_data.get('total_images', 0)}
-- Images without ALT: {site_data.get('images_without_alt', 0)}
-- Internal Links: {site_data.get('internal_links', 0)}
-- External Links: {site_data.get('external_links', 0)}
+URL: {site_data.get('url', url)}
+Title: {site_data.get('title', 'N/A')}
+Meta Description: {site_data.get('meta_description', 'No meta description found')}
+H1 Tags: {', '.join(site_data.get('h1_tags', [])) if site_data.get('h1_tags') else 'None found'}
+H2 Tags (first 5): {', '.join(site_data.get('h2_tags', []))}
+Total Images: {site_data.get('total_images', 0)}
+Images without ALT: {site_data.get('images_without_alt', 0)}
+Internal Links: {site_data.get('internal_links', 0)}
+External Links: {site_data.get('external_links', 0)}
+Total Words: {site_data.get('word_count', 0)}
 
-Generate a concise audit (max 600 words) with:
+**INSTRUCTIONS:**
+Generate a professional SEO audit report following EXACTLY this structure:
 
-**Executive Summary** (2-3 paragraphs)
+# 📊 Basic SEO Audit - [Site Name]
 
-**Technical Findings:**
-- Meta Tags Analysis
-- Content Structure
-- Image Optimization
-- Internal Linking
+## 🎯 Executive Summary
 
-**Key Recommendations** (prioritized list of 5-8 specific actions)
+**Overall Score**: [X]/100
 
-RULES:
-- English only
-- Only mention ACTUAL issues found
-- Be specific with numbers
-- Prioritize recommendations (Critical/High/Medium)
+[2-3 paragraph summary about the general state of the site]
+
+### Key Findings:
+- ✅ **Strengths**: [List 2-3 strong points]
+- ⚠️ **Opportunities**: [List 2-3 areas for improvement]
+- 🔴 **Critical**: [List 1-2 urgent issues]
+
+---
+
+## 🔍 Technical SEO Analysis
+
+### Meta Tags
+- **Title Tag**: [Analysis of title - length, keywords, optimization]
+- **Meta Description**: [Analysis - exists, length, call to action]
+- **Open Graph**: [If detected or recommend implementation]
+
+### Content Structure
+- **H1**: [Analysis of found H1s]
+- **H2-H6**: [Hierarchy analysis]
+- **Content Density**: [Analysis based on word count]
+
+### Image Optimization
+- Total images: {site_data.get('total_images', 0)}
+- Without ALT attribute: {site_data.get('images_without_alt', 0)}
+- [Specific recommendations]
+
+### Link Architecture
+- Internal links: {site_data.get('internal_links', 0)}
+- External links: {site_data.get('external_links', 0)}
+- [Linking strategy analysis]
+
+---
+
+## 📋 Prioritized Action Plan
+
+### 🔴 CRITICAL (Do immediately)
+1. **[Action Title]**
+   - Description: [What to do]
+   - Effort: [X] hours
+   - Impact: High/Medium/Low
+   - Action: [Specific steps]
+
+[Continue with 2-3 more critical actions]
+
+### 🟡 HIGH PRIORITY (Next 1-2 weeks)
+[List 3-4 high priority actions with same format]
+
+### 🟢 MEDIUM PRIORITY (Month 1-2)
+[List 2-3 medium priority actions]
+
+---
+
+## 🎯 Strategic Recommendations
+
+[2-3 paragraphs with general strategic recommendations based on the analysis]
+
+---
+
+**Analysis Type**: Basic (Visual)
+**Generated by**: Gemini 2.0 Flash
+**Date**: {datetime.now().strftime("%m/%d/%Y %H:%M")}
+
+IMPORTANT: 
+- Be specific and professional
+- Base EVERYTHING on the provided data
+- If something is missing, indicate it as an improvement opportunity
+- Number all actions
+- Use emojis only where indicated in the structure
+- Generate the ENTIRE audit in ENGLISH language
 """
-        else:  # Full audit
-            ahrefs_summary = "No Ahrefs data"
-            if ahrefs_data:
-                ahrefs_summary = f"""
-- Domain Rating: {ahrefs_data['domain_rating']}
-- Backlinks: {ahrefs_data['backlinks']:,}
-- Referring Domains: {ahrefs_data['referring_domains']:,}
-- Organic Keywords: {ahrefs_data['organic_keywords']:,}
-- Organic Traffic: {ahrefs_data['organic_traffic']:,}/month
-"""
-            
+        else:  # Full
             prompt = f"""
-You are Claudio, expert SEO auditor. Generate a COMPREHENSIVE audit for: {site_name}
+You are Claudio, an expert professional SEO auditor. Generate an ultra-professional COMPLETE SEO audit.
 
-**SITE DATA:**
+**BASIC SITE DATA:**
 {site_data}
 
-**AHREFS METRICS:**
-{ahrefs_summary}
+**NOTE**: This is a FULL audit but we don't have Ahrefs API data yet. 
+For now, generate the audit with available data and add sections that SHOULD include Ahrefs data
+clearly indicating that this data will be added when the API is connected.
 
-Generate a complete professional audit following this EXACT structure:
+Follow the same structure as Basic but add these sections:
 
-## EXECUTIVE SUMMARY
-- Overall score /100
-- 3-4 paragraph comprehensive summary
-- Key metrics overview
-- Main strengths and critical issues
+## 📊 Authority Metrics (Pending Ahrefs API)
+[Explain what metrics will be shown here: DR, backlinks, referring domains, etc.]
 
-## TECHNICAL SEO ANALYSIS
-### Site Structure & Indexation
-### Meta Tags & On-Page Elements
-### Performance & Mobile
+## 🔗 Backlink Profile (Pending Ahrefs API)
+[Explain what analysis will be done here]
 
-## BACKLINK PROFILE ANALYSIS
-- Quality assessment
-- Link diversity
-- Toxic links (if any)
-- Opportunities
+## 📈 Organic Performance (Pending Ahrefs API)
+[Explain what keyword and traffic data will be shown]
 
-## ORGANIC PERFORMANCE
-### Current Rankings
-### Top Performing Pages
-### Keyword Opportunities
+Generate the rest of the analysis based on available data.
 
-## QUICK WINS
-(3-5 easy high-impact actions, 1-2 days each)
+**Date**: {datetime.now().strftime("%m/%d/%Y %H:%M")}
 
-## COMPETITIVE ANALYSIS
-(Brief competitive insights)
-
-## PRIORITIZED ACTION PLAN
-
-### CRITICAL (Week 1-2)
-[Specific issues with:
-- Description
-- Impact (High/Medium/Low)
-- Effort (hours)
-- Expected result]
-
-### HIGH PRIORITY (Week 3-4)
-[Same format]
-
-### MEDIUM PRIORITY (Month 2)
-[Same format]
-
-## EXPECTED RESULTS (3 Months)
-[Realistic projections]
-
-CRITICAL RULES:
-- English only
-- Only include ACTUAL issues found in the data
-- NO placeholder issues
-- Be specific with all numbers
-- Use real Ahrefs data, don't invent
-- If section has no issues, say "No critical issues found" and move on
+IMPORTANT: Generate the ENTIRE audit in ENGLISH language.
 """
         
+        # Generate content
         response = model.generate_content(prompt)
         return response.text
         
     except Exception as e:
-        return f"Error generating audit: {str(e)}"
+        return f"❌ Error generating audit with Gemini: {str(e)}"
 
 # ===========================
-# 📄 DOCUMENT GENERATION FROM TEMPLATE
-# ===========================
-def create_word_from_content(audit_content, site_name, audit_type):
-    """Creates Word document from audit content"""
-    
-    doc = Document()
-    
-    # Title
-    title = doc.add_heading(f'SEO Audit - {site_name}', 0)
-    title.alignment = 1  # Center
-    
-    # Subtitle
-    subtitle = doc.add_paragraph(f'{audit_type} Audit')
-    subtitle.alignment = 1
-    subtitle_run = subtitle.runs[0]
-    subtitle_run.font.size = Pt(14)
-    subtitle_run.font.color.rgb = RGBColor(96, 165, 250)
-    
-    doc.add_paragraph()  # Space
-    
-    # Process content
-    lines = audit_content.split('\n')
-    
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-        
-        # Headers
-        if line.startswith('## '):
-            doc.add_heading(line.replace('## ', ''), level=2)
-        elif line.startswith('### '):
-            doc.add_heading(line.replace('### ', ''), level=3)
-        # Lists
-        elif line.startswith(('- ', '* ')):
-            doc.add_paragraph(line[2:], style='List Bullet')
-        elif re.match(r'^\d+\.', line):
-            doc.add_paragraph(re.sub(r'^\d+\.\s*', '', line), style='List Number')
-        # Dividers
-        elif line == '---':
-            doc.add_paragraph('_' * 60)
-        # Regular text
-        else:
-            line = line.replace('**', '')
-            doc.add_paragraph(line)
-    
-    # Footer
-    doc.add_paragraph()
-    footer = doc.add_paragraph(f'Generated by Claudio - {datetime.now().strftime("%B %d, %Y")}')
-    footer.alignment = 1
-    footer_run = footer.runs[0]
-    footer_run.font.size = Pt(9)
-    footer_run.font.color.rgb = RGBColor(148, 163, 184)
-    
-    # Save to BytesIO
-    doc_io = BytesIO()
-    doc.save(doc_io)
-    doc_io.seek(0)
-    
-    return doc_io
-
-def create_excel_from_content(audit_content, site_name):
-    """Creates Excel task list from audit content"""
-    
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "SEO Tasks"
-    
-    # Styling
-    header_fill = PatternFill(start_color="3B82F6", end_color="3B82F6", fill_type="solid")
-    header_font = Font(bold=True, color="FFFFFF", size=11)
-    
-    critical_fill = PatternFill(start_color="FEE2E2", end_color="FEE2E2", fill_type="solid")
-    high_fill = PatternFill(start_color="FED7AA", end_color="FED7AA", fill_type="solid")
-    medium_fill = PatternFill(start_color="FEF3C7", end_color="FEF3C7", fill_type="solid")
-    low_fill = PatternFill(start_color="D1FAE5", end_color="D1FAE5", fill_type="solid")
-    
-    # Headers
-    headers = ['#', 'Task', 'Category', 'Priority', 'Effort (hrs)', 'Impact', 'How to Fix', 'Status']
-    ws.append(headers)
-    
-    for cell in ws[1]:
-        cell.fill = header_fill
-        cell.font = header_font
-        cell.alignment = Alignment(horizontal='center', vertical='center')
-    
-    # Extract tasks
-    task_num = 1
-    lines = audit_content.split('\n')
-    current_priority = 'Medium'
-    
-    for i, line in enumerate(lines):
-        line = line.strip()
-        
-        # Detect priority
-        if 'CRITICAL' in line.upper() and ('Week' in line or 'Priority' in line):
-            current_priority = 'Critical'
-        elif 'HIGH PRIORITY' in line.upper():
-            current_priority = 'High'
-        elif 'MEDIUM PRIORITY' in line.upper():
-            current_priority = 'Medium'
-        elif 'LOW PRIORITY' in line.upper():
-            current_priority = 'Low'
-        
-        # Extract tasks
-        if (line.startswith(('-', '*', '•')) or re.match(r'^\d+\.', line)) and len(line) > 30:
-            # Check if in action section
-            context = ' '.join(lines[max(0, i-15):i])
-            if any(keyword in context for keyword in ['Action', 'Priority', 'Quick Win', 'Recommendation']):
-                
-                task = re.sub(r'^[\d\-\*\•\.\s]+', '', line).strip()
-                
-                # Estimate effort and impact
-                effort = '2-4'
-                impact = 'Medium'
-                
-                if current_priority == 'Critical':
-                    effort = '4-8'
-                    impact = 'High'
-                elif current_priority == 'High':
-                    effort = '3-6'
-                    impact = 'High'
-                elif current_priority == 'Low':
-                    effort = '1-2'
-                    impact = 'Low'
-                
-                # Categorize
-                category = 'Technical SEO'
-                task_lower = task.lower()
-                if any(w in task_lower for w in ['content', 'keyword', 'text', 'copy', 'article']):
-                    category = 'Content'
-                elif any(w in task_lower for w in ['link', 'backlink', 'anchor']):
-                    category = 'Link Building'
-                elif any(w in task_lower for w in ['meta', 'title', 'description', 'tag', 'heading']):
-                    category = 'On-Page SEO'
-                elif any(w in task_lower for w in ['speed', 'performance', 'mobile', 'core web']):
-                    category = 'Performance'
-                
-                # How to fix (extract from next few lines if available)
-                how_to_fix = 'See audit report for details'
-                
-                row = [task_num, task, category, current_priority, effort, impact, how_to_fix, 'To Do']
-                ws.append(row)
-                
-                # Color code by priority
-                row_idx = ws.max_row
-                fill = None
-                if current_priority == 'Critical':
-                    fill = critical_fill
-                elif current_priority == 'High':
-                    fill = high_fill
-                elif current_priority == 'Medium':
-                    fill = medium_fill
-                elif current_priority == 'Low':
-                    fill = low_fill
-                
-                if fill:
-                    for cell in ws[row_idx]:
-                        cell.fill = fill
-                
-                task_num += 1
-    
-    # Column widths
-    ws.column_dimensions['A'].width = 5
-    ws.column_dimensions['B'].width = 45
-    ws.column_dimensions['C'].width = 15
-    ws.column_dimensions['D'].width = 10
-    ws.column_dimensions['E'].width = 12
-    ws.column_dimensions['F'].width = 10
-    ws.column_dimensions['G'].width = 35
-    ws.column_dimensions['H'].width = 12
-    
-    # Save
-    excel_io = BytesIO()
-    wb.save(excel_io)
-    excel_io.seek(0)
-    
-    return excel_io
-
-# ===========================
-# 🎨 SIDEBAR
+# 🎨 SIDEBAR - STATUS
 # ===========================
 with st.sidebar:
     st.markdown("### 🏢 System Status")
@@ -704,17 +482,18 @@ with st.sidebar:
     **Features**:
     - 🔍 Basic visual analysis
     - 💎 Full analysis with Ahrefs
-    - 🤖 AI-powered insights
+    - 🤖 Multiple AI models
     - 📄 Professional reports
     """)
     
     st.markdown("---")
-    st.caption("v2.1 - Template Edition")
+    st.caption("v2.0 - Professional Edition")
 
 # ===========================
 # 🎯 MAIN INTERFACE
 # ===========================
 
+# Header with logo
 st.markdown("""
 <div class="claudio-header">
     <div class="claudio-avatar-large">👔</div>
@@ -723,28 +502,32 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Configuration
+# ===========================
+# 🎛️ CONFIGURATION
+# ===========================
+
 col1, col2 = st.columns([2, 1])
 
 with col1:
     audit_type = st.radio(
         "Audit Type",
         ["🔍 Basic (Visual Analysis)", "💎 Full (With Ahrefs Data)"],
-        help="Basic: Quick visual analysis\nFull: Complete with Ahrefs metrics"
+        help="Basic: Quick visual analysis\nFull: Complete analysis with Ahrefs metrics"
     )
 
 with col2:
     if "Full" in audit_type:
         st.info("**Full Audit**\n\n✓ Domain Rating\n✓ Backlinks\n✓ Keywords\n✓ Traffic data")
     else:
-        st.info("**Basic Audit**\n\n✓ Technical SEO\n✓ On-page analysis\n✓ Quick insights")
+        st.info("**Basic Audit**\n\n✓ Technical SEO\n✓ On-page analysis\n✓ Content review")
 
 st.markdown("---")
 
-# AI Model
+# AI Model selector (compact)
 col1, col2 = st.columns([3, 1])
 
 with col1:
+    # Filter models according to availability
     available_models = []
     
     if GEMINI_AVAILABLE:
@@ -757,34 +540,41 @@ with col1:
         ])
     
     if not available_models:
-        st.error("❌ No AI models configured.")
+        st.error("❌ No AI models configured. Please add API keys in Streamlit Secrets.")
         st.stop()
     
-    selected_model = st.selectbox("AI Model", available_models)
+    selected_model = st.selectbox(
+        "AI Model",
+        available_models,
+        help="Choose the AI model for analysis"
+    )
 
 st.markdown("---")
 
-# URL Input
+# URL Input (compact)
 url_input = st.text_input(
     "Website URL",
     placeholder="https://example.com",
     help="Enter the full URL including https://"
 )
 
-# Confirmation
+# Confirmation for Full Audit
 if "Full" in audit_type:
     if AHREFS_AVAILABLE:
         st.warning("⚠️ Full Audit will use Ahrefs API credits")
         confirm_ahrefs = st.checkbox("✓ Confirm Ahrefs API usage", value=False)
     else:
-        st.error("❌ Ahrefs API not configured. Cannot perform Full audit.")
-        confirm_ahrefs = False
+        st.warning("⚠️ Ahrefs API not configured. Full audit will generate report structure without Ahrefs data.")
+        confirm_ahrefs = True
 else:
     confirm_ahrefs = True
 
 st.markdown("---")
 
-# Generate Button
+# ===========================
+# 🚀 AUDIT BUTTON
+# ===========================
+
 col1, col2, col3 = st.columns([1, 2, 1])
 
 with col2:
@@ -794,97 +584,91 @@ with col2:
         
         if not url_input:
             st.error("❌ Please enter a URL")
+        elif "Full" in audit_type and AHREFS_AVAILABLE and not confirm_ahrefs:
+            st.error("❌ Please confirm Ahrefs API usage")
         else:
             st.markdown("---")
             
+            # Progress bar
             progress_bar = st.progress(0)
             status_text = st.empty()
             
             # Step 1: Analyze site
             status_text.text("🔍 Analyzing website...")
-            progress_bar.progress(20)
+            progress_bar.progress(30)
             site_data = analyze_basic_site(url_input)
             time.sleep(1)
             
             if 'error' in site_data:
-                st.error(f"❌ Error: {site_data['error']}")
+                st.error(f"❌ Error analyzing website: {site_data['error']}")
                 st.stop()
             
-            # Step 2: Get Ahrefs data if Full
-            ahrefs_data = None
-            if "Full" in audit_type and AHREFS_AVAILABLE:
-                status_text.text("📊 Fetching Ahrefs data...")
-                progress_bar.progress(40)
-                ahrefs_data = get_ahrefs_data(url_input)
-                time.sleep(1)
-            
-            # Step 3: Generate audit
-            status_text.text("🤖 Generating audit content...")
+            # Step 2: Generate with AI
+            status_text.text("🤖 Generating audit with AI...")
             progress_bar.progress(60)
             
             type_audit = "Basic" if "Basic" in audit_type else "Full"
             
-            audit_content = generate_audit_content(url_input, site_data, ahrefs_data, type_audit)
-            
-            # Step 4: Create documents
-            status_text.text("📄 Creating documents...")
-            progress_bar.progress(80)
-            
-            site_name = url_input.replace('https://', '').replace('http://', '').replace('www.', '').split('/')[0]
-            
-            doc_file = create_word_from_content(audit_content, site_name, type_audit)
-            
-            excel_file = None
-            if type_audit == "Full":
-                excel_file = create_excel_from_content(audit_content, site_name)
+            # For now only Gemini is implemented
+            if "Gemini" in selected_model:
+                result = generate_audit_with_gemini(url_input, site_data, type_audit)
+            else:
+                st.warning("⚠️ Claude implementation coming soon. Using Gemini for now.")
+                result = generate_audit_with_gemini(url_input, site_data, type_audit)
             
             progress_bar.progress(100)
-            status_text.text("✅ Complete!")
+            status_text.text("✅ Audit completed!")
             time.sleep(0.5)
             
             progress_bar.empty()
             status_text.empty()
             
-            # Results
+            # Show result
             st.markdown("---")
             st.success("✅ Audit completed successfully!")
             
-            tab1, tab2 = st.tabs(["📄 Preview", "📥 Download"])
+            # Tabs to organize results
+            tab1, tab2 = st.tabs(["📄 Full Report", "📥 Download"])
             
             with tab1:
                 st.markdown('<div class="audit-report">', unsafe_allow_html=True)
-                st.markdown(audit_content)
+                st.markdown(result)
                 st.markdown('</div>', unsafe_allow_html=True)
             
             with tab2:
-                st.markdown("### Download Your Documents")
+                st.markdown("### Download Options")
                 
                 col1, col2 = st.columns(2)
                 
                 with col1:
-                    st.markdown("#### 📄 Audit Report")
-                    st.download_button(
-                        label="📥 Download Report (.docx)",
-                        data=doc_file,
-                        file_name=f"SEO_Audit_{site_name}_{datetime.now().strftime('%Y%m%d')}.docx",
-                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        use_container_width=True
-                    )
+                    st.markdown("#### 📄 Word Document")
+                    st.info("""
+                    **Includes**:
+                    - Executive Summary
+                    - Complete Analysis
+                    - Recommendations
+                    - Professional Format
+                    """)
+                    st.button("📥 Download .docx", disabled=True, help="Coming soon!")
                 
                 with col2:
-                    if excel_file:
-                        st.markdown("#### 📊 Task List")
-                        st.download_button(
-                            label="📥 Download Tasks (.xlsx)",
-                            data=excel_file,
-                            file_name=f"SEO_Tasks_{site_name}_{datetime.now().strftime('%Y%m%d')}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            use_container_width=True
-                        )
-                    else:
-                        st.info("📊 Task list only for Full audits")
+                    st.markdown("#### 📊 Excel Spreadsheet")
+                    st.info("""
+                    **Includes**:
+                    - Prioritized Tasks
+                    - Technical Issues
+                    - SEO Opportunities
+                    - Tracking Checkboxes
+                    """)
+                    st.button("📥 Download .xlsx", disabled=True, help="Coming soon!")
+                
+                st.markdown("---")
+                st.caption("*Document generation will be enabled soon*")
 
-# Footer
+# ===========================
+# 📊 FOOTER
+# ===========================
+
 st.markdown("---")
 col1, col2, col3 = st.columns(3)
 
