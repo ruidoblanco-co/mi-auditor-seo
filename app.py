@@ -4,899 +4,1145 @@ from datetime import datetime
 import requests
 from bs4 import BeautifulSoup
 import google.generativeai as genai
+
 from docx import Document
+from docx.shared import Pt, RGBColor
+
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
 from io import BytesIO
+import json
 import re
+from pathlib import Path
+from urllib.parse import urlparse
+
+# Optional Claude
+try:
+    import anthropic
+    ANTHROPIC_OK = True
+except Exception:
+    ANTHROPIC_OK = False
+
 
 # ===========================
-# 🎨 PAGE CONFIGURATION
+# PAGE CONFIG
 # ===========================
 st.set_page_config(
     page_title="Claudio - Professional SEO Auditor",
     page_icon="👔",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
 )
 
+BASE_DIR = Path(__file__).parent
+TEMPLATES_DIR = BASE_DIR / "templates"
+PROMPTS_DIR = BASE_DIR / "prompts"
+
+DOCX_TEMPLATE_FULL = TEMPLATES_DIR / "SEO_Audit_Template_Full.docx"
+XLSX_TEMPLATE_FULL = TEMPLATES_DIR / "SEO_Tasks_Template_Full.xlsx"
+
+PROMPT_FULL = PROMPTS_DIR / "full.md"
+PROMPT_BASIC = PROMPTS_DIR / "basic.md"
+
 # ===========================
-# 🔑 API CONFIGURATION
+# API CONFIG
 # ===========================
+GEMINI_AVAILABLE = False
+CLAUDE_AVAILABLE = False
+AHREFS_AVAILABLE = False
+
+GEMINI_API_KEY = ""
+CLAUDE_API_KEY = ""
+AHREFS_API_KEY = ""
+
 try:
     GEMINI_API_KEY = st.secrets["GOOGLE_API_KEY"]
     genai.configure(api_key=GEMINI_API_KEY)
     GEMINI_AVAILABLE = True
-except Exception as e:
+except Exception:
     GEMINI_AVAILABLE = False
-
-try:
-    CLAUDE_API_KEY = st.secrets.get("ANTHROPIC_API_KEY", "")
-    CLAUDE_AVAILABLE = bool(CLAUDE_API_KEY)
-except:
-    CLAUDE_AVAILABLE = False
 
 try:
     AHREFS_API_KEY = st.secrets.get("AHREFS_API_KEY", "")
     AHREFS_AVAILABLE = bool(AHREFS_API_KEY)
-except:
+except Exception:
     AHREFS_AVAILABLE = False
 
+try:
+    CLAUDE_API_KEY = st.secrets.get("ANTHROPIC_API_KEY", "")
+    CLAUDE_AVAILABLE = bool(CLAUDE_API_KEY) and ANTHROPIC_OK
+except Exception:
+    CLAUDE_AVAILABLE = False
+
+
 # ===========================
-# 🎨 CUSTOM CSS
+# CSS (minimal - puedes pegar tu CSS largo si quieres)
 # ===========================
 st.markdown("""
 <style>
-    .stApp {
-        background: linear-gradient(135deg, #2b2d42 0%, #1a1b26 100%);
-    }
-    
-    [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #1a1b26 0%, #121318 100%);
-    }
-    
-    [data-testid="stMetricValue"] {
-        font-size: 24px;
-        color: #60a5fa;
-        font-weight: 600;
-    }
-    
-    [data-testid="stMetricLabel"] {
-        color: #94a3b8;
-        font-size: 13px;
-        font-weight: 500;
-    }
-    
-    .stButton>button {
-        width: 100%;
-        background: linear-gradient(90deg, #60a5fa 0%, #3b82f6 100%);
-        color: white;
-        font-weight: 600;
-        border: none;
-        padding: 10px 20px;
-        border-radius: 6px;
-        font-size: 15px;
-        transition: all 0.3s ease;
-    }
-    
-    .stButton>button:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 6px 12px rgba(96, 165, 250, 0.3);
-    }
-    
-    .stTextInput>div>div>input {
-        background-color: rgba(255, 255, 255, 0.05);
-        color: white;
-        border: 1px solid rgba(96, 165, 250, 0.3);
-        border-radius: 6px;
-        padding: 8px;
-        font-size: 14px;
-    }
-    
-    .stSelectbox>div>div>div {
-        background-color: rgba(255, 255, 255, 0.05);
-        color: white;
-        border-radius: 6px;
-        font-size: 14px;
-    }
-    
-    .stRadio>div {
-        background-color: rgba(255, 255, 255, 0.03);
-        padding: 12px;
-        border-radius: 6px;
-        border: 1px solid rgba(96, 165, 250, 0.2);
-    }
-    
-    h1 {
-        color: #60a5fa;
-        font-weight: 700;
-    }
-    
-    h2, h3 {
-        color: #e2e8f0;
-    }
-    
-    .claudio-header {
-        text-align: center;
-        padding: 20px 0 30px 0;
-        margin-bottom: 30px;
-        border-bottom: 2px solid rgba(96, 165, 250, 0.2);
-    }
-    
-    .claudio-avatar-large {
-        width: 100px;
-        height: 100px;
-        border-radius: 50%;
-        background: linear-gradient(135deg, #8B4513 0%, #654321 100%);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 50px;
-        margin: 0 auto 15px;
-        border: 4px solid #60a5fa;
-        box-shadow: 0 4px 12px rgba(96, 165, 250, 0.3);
-    }
-    
-    .claudio-title {
-        font-size: 42px;
-        font-weight: 700;
-        color: #60a5fa;
-        margin: 10px 0 5px 0;
-        letter-spacing: -1px;
-    }
-    
-    .claudio-subtitle {
-        font-size: 18px;
-        color: #94a3b8;
-        font-weight: 400;
-    }
-    
-    .status-badge {
-        display: inline-block;
-        padding: 4px 12px;
-        border-radius: 12px;
-        font-size: 12px;
-        font-weight: 600;
-        margin: 4px;
-    }
-    
-    .status-connected {
-        background-color: rgba(34, 197, 94, 0.2);
-        color: #22c55e;
-        border: 1px solid #22c55e;
-    }
-    
-    .status-disconnected {
-        background-color: rgba(239, 68, 68, 0.2);
-        color: #ef4444;
-        border: 1px solid #ef4444;
-    }
-    
-    .status-optional {
-        background-color: rgba(251, 191, 36, 0.2);
-        color: #fbbf24;
-        border: 1px solid #fbbf24;
-    }
-    
-    .audit-report {
-        background-color: rgba(255, 255, 255, 0.03);
-        padding: 30px;
-        border-radius: 8px;
-        border: 1px solid rgba(96, 165, 250, 0.2);
-        line-height: 1.8;
-    }
-    
-    .audit-report h1 {
-        color: #60a5fa;
-        border-bottom: 2px solid rgba(96, 165, 250, 0.3);
-        padding-bottom: 10px;
-        margin-bottom: 20px;
-    }
-    
-    .audit-report h2 {
-        color: #93c5fd;
-        margin-top: 30px;
-        margin-bottom: 15px;
-    }
-    
-    .audit-report h3 {
-        color: #bfdbfe;
-        margin-top: 20px;
-        margin-bottom: 10px;
-    }
-    
-    .stRadio label, .stSelectbox label {
-        font-size: 13px;
-        color: #94a3b8;
-        font-weight: 500;
-    }
+.stApp { background: linear-gradient(135deg, #2b2d42 0%, #1a1b26 100%); }
+[data-testid="stSidebar"] { background: linear-gradient(180deg, #1a1b26 0%, #121318 100%); }
+h1,h2,h3 { color: #e2e8f0; }
 </style>
 """, unsafe_allow_html=True)
 
-# ===========================
-# 🔍 AHREFS API FUNCTIONS
-# ===========================
-def get_ahrefs_data(domain):
-    """Get comprehensive data from Ahrefs API"""
-    
-    if not AHREFS_AVAILABLE:
-        return None
-    
-    headers = {
-        "Authorization": f"Bearer {AHREFS_API_KEY}",
-        "Accept": "application/json"
-    }
-    
-    # Clean domain
-    domain = domain.replace('https://', '').replace('http://', '').replace('www.', '').split('/')[0]
-    
-    ahrefs_data = {
-        'domain': domain,
-        'domain_rating': 0,
-        'url_rating': 0,
-        'backlinks': 0,
-        'referring_domains': 0,
-        'organic_keywords': 0,
-        'organic_traffic': 0,
-        'top_keywords': [],
-        'top_pages': [],
-        'backlink_sample': []
-    }
-    
-    try:
-        # Domain metrics
-        metrics_url = "https://api.ahrefs.com/v3/site-explorer/metrics"
-        metrics_params = {
-            "target": domain,
-            "date": datetime.now().strftime("%Y-%m-%d")
-        }
-        
-        response = requests.get(metrics_url, headers=headers, params=metrics_params, timeout=30)
-        if response.status_code == 200:
-            data = response.json()
-            if 'metrics' in data:
-                m = data['metrics']
-                ahrefs_data['domain_rating'] = m.get('domain_rating', 0)
-                ahrefs_data['url_rating'] = m.get('url_rating', 0)
-                ahrefs_data['backlinks'] = m.get('backlinks', 0)
-                ahrefs_data['referring_domains'] = m.get('refdomains', 0)
-                ahrefs_data['organic_keywords'] = m.get('organic_keywords', 0)
-                ahrefs_data['organic_traffic'] = m.get('organic_traffic', 0)
-        
-        time.sleep(1)
-        
-        # Top keywords
-        keywords_url = "https://api.ahrefs.com/v3/site-explorer/organic-keywords"
-        keywords_params = {
-            "target": domain,
-            "limit": 20,
-            "order_by": "volume:desc"
-        }
-        
-        response = requests.get(keywords_url, headers=headers, params=keywords_params, timeout=30)
-        if response.status_code == 200:
-            data = response.json()
-            if 'keywords' in data:
-                ahrefs_data['top_keywords'] = data['keywords'][:10]
-        
-        time.sleep(1)
-        
-        # Top pages
-        pages_url = "https://api.ahrefs.com/v3/site-explorer/top-pages"
-        pages_params = {
-            "target": domain,
-            "limit": 10
-        }
-        
-        response = requests.get(pages_url, headers=headers, params=pages_params, timeout=30)
-        if response.status_code == 200:
-            data = response.json()
-            if 'pages' in data:
-                ahrefs_data['top_pages'] = data['pages'][:5]
-        
-        time.sleep(1)
-        
-        # Backlink sample
-        backlinks_url = "https://api.ahrefs.com/v3/site-explorer/all-backlinks"
-        backlinks_params = {
-            "target": domain,
-            "limit": 10,
-            "order_by": "domain_rating:desc"
-        }
-        
-        response = requests.get(backlinks_url, headers=headers, params=backlinks_params, timeout=30)
-        if response.status_code == 200:
-            data = response.json()
-            if 'backlinks' in data:
-                ahrefs_data['backlink_sample'] = data['backlinks'][:5]
-        
-        return ahrefs_data
-        
-    except Exception as e:
-        st.warning(f"⚠️ Ahrefs API error: {str(e)}")
-        return ahrefs_data  # Return with defaults
 
 # ===========================
-# 🔍 WEB ANALYSIS FUNCTIONS
+# HELPERS
 # ===========================
-def analyze_basic_site(url):
-    """Analyzes the website extracting basic information from HTML"""
-    try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-        response = requests.get(url, headers=headers, timeout=10)
-        soup = BeautifulSoup(response.content, 'html.parser')
-        
-        analysis = {
-            'url': url,
-            'status_code': response.status_code,
-            'title': soup.title.string if soup.title else 'No title found',
-            'meta_description': '',
-            'h1_tags': [],
-            'h2_tags': [],
-            'images_without_alt': 0,
-            'total_images': 0,
-            'internal_links': 0,
-            'external_links': 0,
-            'word_count': 0
-        }
-        
-        meta_desc = soup.find('meta', attrs={'name': 'description'})
-        if meta_desc:
-            analysis['meta_description'] = meta_desc.get('content', '')
-        
-        analysis['h1_tags'] = [h1.get_text().strip() for h1 in soup.find_all('h1')]
-        analysis['h2_tags'] = [h2.get_text().strip() for h2 in soup.find_all('h2')][:5]
-        
-        images = soup.find_all('img')
-        analysis['total_images'] = len(images)
-        analysis['images_without_alt'] = len([img for img in images if not img.get('alt')])
-        
-        links = soup.find_all('a', href=True)
-        for link in links:
-            href = link['href']
-            if href.startswith('http') and url not in href:
-                analysis['external_links'] += 1
-            elif href.startswith('/') or url in href:
-                analysis['internal_links'] += 1
-        
-        text = soup.get_text()
-        analysis['word_count'] = len(text.split())
-        
-        return analysis
-        
-    except Exception as e:
-        return {'error': str(e)}
+def normalize_domain(url_or_domain: str) -> str:
+    s = (url_or_domain or "").strip()
+    if not s:
+        return ""
+    if not s.startswith(("http://", "https://")):
+        # Could be domain
+        s2 = s
+    else:
+        s2 = urlparse(s).netloc
+    s2 = s2.lower()
+    if s2.startswith("www."):
+        s2 = s2[4:]
+    # remove port if any
+    s2 = s2.split(":")[0]
+    return s2
 
-# ===========================
-# 🤖 AI AUDIT GENERATION
-# ===========================
-def generate_audit_content(url, site_data, ahrefs_data, audit_type):
-    """Generates structured audit data using Gemini"""
-    
-    try:
-        model = genai.GenerativeModel("gemini-2.0-flash-exp")
-        
-        site_name = url.replace('https://', '').replace('http://', '').replace('www.', '').split('/')[0]
-        
-        if audit_type == "Basic":
-            prompt = f"""
-You are Claudio, an expert SEO auditor. Generate a BASIC SEO audit for: {site_name}
-
-**SITE DATA:**
-- Title: {site_data.get('title')}
-- Meta Description: {site_data.get('meta_description', 'Missing')}
-- H1 Tags: {len(site_data.get('h1_tags', []))} found
-- Total Images: {site_data.get('total_images', 0)}
-- Images without ALT: {site_data.get('images_without_alt', 0)}
-- Internal Links: {site_data.get('internal_links', 0)}
-- External Links: {site_data.get('external_links', 0)}
-
-Generate a concise audit (max 600 words) with:
-
-**Executive Summary** (2-3 paragraphs)
-
-**Technical Findings:**
-- Meta Tags Analysis
-- Content Structure
-- Image Optimization
-- Internal Linking
-
-**Key Recommendations** (prioritized list of 5-8 specific actions)
-
-RULES:
-- English only
-- Only mention ACTUAL issues found
-- Be specific with numbers
-- Prioritize recommendations (Critical/High/Medium)
-"""
-        else:  # Full audit
-            ahrefs_summary = "No Ahrefs data"
-            if ahrefs_data:
-                ahrefs_summary = f"""
-- Domain Rating: {ahrefs_data['domain_rating']}
-- Backlinks: {ahrefs_data['backlinks']:,}
-- Referring Domains: {ahrefs_data['referring_domains']:,}
-- Organic Keywords: {ahrefs_data['organic_keywords']:,}
-- Organic Traffic: {ahrefs_data['organic_traffic']:,}/month
-"""
-            
-            prompt = f"""
-You are Claudio, expert SEO auditor. Generate a COMPREHENSIVE audit for: {site_name}
-
-**SITE DATA:**
-{site_data}
-
-**AHREFS METRICS:**
-{ahrefs_summary}
-
-Generate a complete professional audit following this EXACT structure:
-
-## EXECUTIVE SUMMARY
-- Overall score /100
-- 3-4 paragraph comprehensive summary
-- Key metrics overview
-- Main strengths and critical issues
-
-## TECHNICAL SEO ANALYSIS
-### Site Structure & Indexation
-### Meta Tags & On-Page Elements
-### Performance & Mobile
-
-## BACKLINK PROFILE ANALYSIS
-- Quality assessment
-- Link diversity
-- Toxic links (if any)
-- Opportunities
-
-## ORGANIC PERFORMANCE
-### Current Rankings
-### Top Performing Pages
-### Keyword Opportunities
-
-## QUICK WINS
-(3-5 easy high-impact actions, 1-2 days each)
-
-## COMPETITIVE ANALYSIS
-(Brief competitive insights)
-
-## PRIORITIZED ACTION PLAN
-
-### CRITICAL (Week 1-2)
-[Specific issues with:
-- Description
-- Impact (High/Medium/Low)
-- Effort (hours)
-- Expected result]
-
-### HIGH PRIORITY (Week 3-4)
-[Same format]
-
-### MEDIUM PRIORITY (Month 2)
-[Same format]
-
-## EXPECTED RESULTS (3 Months)
-[Realistic projections]
-
-CRITICAL RULES:
-- English only
-- Only include ACTUAL issues found in the data
-- NO placeholder issues
-- Be specific with all numbers
-- Use real Ahrefs data, don't invent
-- If section has no issues, say "No critical issues found" and move on
-"""
-        
-        response = model.generate_content(prompt)
-        return response.text
-        
-    except Exception as e:
-        return f"Error generating audit: {str(e)}"
-
-# ===========================
-# 📄 DOCUMENT GENERATION FROM TEMPLATE
-# ===========================
-def create_word_from_content(audit_content, site_name, audit_type):
-    """Creates Word document from audit content"""
-    
-    doc = Document()
-    
-    # Title
-    title = doc.add_heading(f'SEO Audit - {site_name}', 0)
-    title.alignment = 1  # Center
-    
-    # Subtitle
-    subtitle = doc.add_paragraph(f'{audit_type} Audit')
-    subtitle.alignment = 1
-    subtitle_run = subtitle.runs[0]
-    subtitle_run.font.size = Pt(14)
-    subtitle_run.font.color.rgb = RGBColor(96, 165, 250)
-    
-    doc.add_paragraph()  # Space
-    
-    # Process content
-    lines = audit_content.split('\n')
-    
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-        
-        # Headers
-        if line.startswith('## '):
-            doc.add_heading(line.replace('## ', ''), level=2)
-        elif line.startswith('### '):
-            doc.add_heading(line.replace('### ', ''), level=3)
-        # Lists
-        elif line.startswith(('- ', '* ')):
-            doc.add_paragraph(line[2:], style='List Bullet')
-        elif re.match(r'^\d+\.', line):
-            doc.add_paragraph(re.sub(r'^\d+\.\s*', '', line), style='List Number')
-        # Dividers
-        elif line == '---':
-            doc.add_paragraph('_' * 60)
-        # Regular text
+def safe_get(d: dict, *keys, default=None):
+    cur = d
+    for k in keys:
+        if isinstance(cur, dict) and k in cur:
+            cur = cur[k]
         else:
-            line = line.replace('**', '')
-            doc.add_paragraph(line)
-    
-    # Footer
-    doc.add_paragraph()
-    footer = doc.add_paragraph(f'Generated by Claudio - {datetime.now().strftime("%B %d, %Y")}')
-    footer.alignment = 1
-    footer_run = footer.runs[0]
-    footer_run.font.size = Pt(9)
-    footer_run.font.color.rgb = RGBColor(148, 163, 184)
-    
-    # Save to BytesIO
-    doc_io = BytesIO()
-    doc.save(doc_io)
-    doc_io.seek(0)
-    
-    return doc_io
+            return default
+    return cur
 
-def create_excel_from_content(audit_content, site_name):
-    """Creates Excel task list from audit content"""
-    
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "SEO Tasks"
-    
-    # Styling
-    header_fill = PatternFill(start_color="3B82F6", end_color="3B82F6", fill_type="solid")
-    header_font = Font(bold=True, color="FFFFFF", size=11)
-    
-    critical_fill = PatternFill(start_color="FEE2E2", end_color="FEE2E2", fill_type="solid")
-    high_fill = PatternFill(start_color="FED7AA", end_color="FED7AA", fill_type="solid")
-    medium_fill = PatternFill(start_color="FEF3C7", end_color="FEF3C7", fill_type="solid")
-    low_fill = PatternFill(start_color="D1FAE5", end_color="D1FAE5", fill_type="solid")
-    
-    # Headers
-    headers = ['#', 'Task', 'Category', 'Priority', 'Effort (hrs)', 'Impact', 'How to Fix', 'Status']
-    ws.append(headers)
-    
-    for cell in ws[1]:
-        cell.fill = header_fill
-        cell.font = header_font
-        cell.alignment = Alignment(horizontal='center', vertical='center')
-    
-    # Extract tasks
-    task_num = 1
-    lines = audit_content.split('\n')
-    current_priority = 'Medium'
-    
-    for i, line in enumerate(lines):
-        line = line.strip()
-        
-        # Detect priority
-        if 'CRITICAL' in line.upper() and ('Week' in line or 'Priority' in line):
-            current_priority = 'Critical'
-        elif 'HIGH PRIORITY' in line.upper():
-            current_priority = 'High'
-        elif 'MEDIUM PRIORITY' in line.upper():
-            current_priority = 'Medium'
-        elif 'LOW PRIORITY' in line.upper():
-            current_priority = 'Low'
-        
-        # Extract tasks
-        if (line.startswith(('-', '*', '•')) or re.match(r'^\d+\.', line)) and len(line) > 30:
-            # Check if in action section
-            context = ' '.join(lines[max(0, i-15):i])
-            if any(keyword in context for keyword in ['Action', 'Priority', 'Quick Win', 'Recommendation']):
-                
-                task = re.sub(r'^[\d\-\*\•\.\s]+', '', line).strip()
-                
-                # Estimate effort and impact
-                effort = '2-4'
-                impact = 'Medium'
-                
-                if current_priority == 'Critical':
-                    effort = '4-8'
-                    impact = 'High'
-                elif current_priority == 'High':
-                    effort = '3-6'
-                    impact = 'High'
-                elif current_priority == 'Low':
-                    effort = '1-2'
-                    impact = 'Low'
-                
-                # Categorize
-                category = 'Technical SEO'
-                task_lower = task.lower()
-                if any(w in task_lower for w in ['content', 'keyword', 'text', 'copy', 'article']):
-                    category = 'Content'
-                elif any(w in task_lower for w in ['link', 'backlink', 'anchor']):
-                    category = 'Link Building'
-                elif any(w in task_lower for w in ['meta', 'title', 'description', 'tag', 'heading']):
-                    category = 'On-Page SEO'
-                elif any(w in task_lower for w in ['speed', 'performance', 'mobile', 'core web']):
-                    category = 'Performance'
-                
-                # How to fix (extract from next few lines if available)
-                how_to_fix = 'See audit report for details'
-                
-                row = [task_num, task, category, current_priority, effort, impact, how_to_fix, 'To Do']
-                ws.append(row)
-                
-                # Color code by priority
-                row_idx = ws.max_row
-                fill = None
-                if current_priority == 'Critical':
-                    fill = critical_fill
-                elif current_priority == 'High':
-                    fill = high_fill
-                elif current_priority == 'Medium':
-                    fill = medium_fill
-                elif current_priority == 'Low':
-                    fill = low_fill
-                
-                if fill:
-                    for cell in ws[row_idx]:
-                        cell.fill = fill
-                
-                task_num += 1
-    
-    # Column widths
-    ws.column_dimensions['A'].width = 5
-    ws.column_dimensions['B'].width = 45
-    ws.column_dimensions['C'].width = 15
-    ws.column_dimensions['D'].width = 10
-    ws.column_dimensions['E'].width = 12
-    ws.column_dimensions['F'].width = 10
-    ws.column_dimensions['G'].width = 35
-    ws.column_dimensions['H'].width = 12
-    
-    # Save
-    excel_io = BytesIO()
-    wb.save(excel_io)
-    excel_io.seek(0)
-    
-    return excel_io
+def strip_json_fences(text: str) -> str:
+    t = (text or "").strip()
+    # remove ```json fences if model returns them
+    t = re.sub(r"^```(?:json)?\s*", "", t, flags=re.IGNORECASE)
+    t = re.sub(r"\s*```$", "", t)
+    return t.strip()
+
+def load_prompt(path: Path) -> str:
+    if not path.exists():
+        raise FileNotFoundError(f"Prompt file missing: {path}")
+    return path.read_text(encoding="utf-8")
+
+def ahrefs_headers():
+    return {
+        "Authorization": f"Bearer {AHREFS_API_KEY}",
+        "Accept": "application/json",
+    }
+
+def ahrefs_get(url: str, params: dict | None = None, timeout: int = 30):
+    r = requests.get(url, headers=ahrefs_headers(), params=params or {}, timeout=timeout)
+    return r.status_code, r.json() if "application/json" in r.headers.get("Content-Type", "") else r.text
+
+def priority_from_count(n: int) -> str:
+    if n <= 0:
+        return "LOW"
+    if n >= 100:
+        return "HIGH"
+    if n >= 20:
+        return "MEDIUM"
+    return "LOW"
+
 
 # ===========================
-# 🎨 SIDEBAR
+# BASIC ON-PAGE ANALYSIS (for Basic mode)
+# ===========================
+def analyze_basic_site(url: str) -> dict:
+    headers = {"User-Agent": "Mozilla/5.0"}
+    r = requests.get(url, headers=headers, timeout=15)
+    r.raise_for_status()
+    soup = BeautifulSoup(r.text, "html.parser")
+
+    title = soup.title.string.strip() if soup.title and soup.title.string else ""
+    meta_desc = ""
+    md = soup.find("meta", attrs={"name": "description"})
+    if md:
+        meta_desc = md.get("content", "").strip()
+
+    h1s = [h.get_text(" ", strip=True) for h in soup.find_all("h1")]
+    h2s = [h.get_text(" ", strip=True) for h in soup.find_all("h2")][:5]
+
+    imgs = soup.find_all("img")
+    total_images = len(imgs)
+    images_without_alt = sum(1 for img in imgs if not img.get("alt"))
+
+    internal_links = 0
+    external_links = 0
+    base_domain = normalize_domain(url)
+    for a in soup.find_all("a", href=True):
+        href = a["href"].strip()
+        if href.startswith("#") or href.startswith("mailto:") or href.startswith("tel:"):
+            continue
+        if href.startswith(("http://", "https://")):
+            d = normalize_domain(href)
+            if d and d != base_domain:
+                external_links += 1
+            else:
+                internal_links += 1
+        else:
+            # relative -> internal
+            internal_links += 1
+
+    text = soup.get_text(" ", strip=True)
+    word_count = len(text.split())
+
+    return {
+        "url": url,
+        "title": title or "Missing",
+        "meta_description": meta_desc or "Missing",
+        "h1_count": len(h1s),
+        "h1_tags": h1s,
+        "h2_sample": h2s,
+        "total_images": total_images,
+        "images_without_alt": images_without_alt,
+        "internal_links": internal_links,
+        "external_links": external_links,
+        "word_count": word_count,
+        "http_status": r.status_code,
+    }
+
+
+# ===========================
+# AHREFS: SITE EXPLORER (metrics/keywords/backlinks/anchors/competitors)
+# ===========================
+@st.cache_data(ttl=900)
+def get_site_explorer_metrics(domain: str) -> dict:
+    # Uses v3 Site Explorer metrics endpoint (as in your old code)
+    url = "https://api.ahrefs.com/v3/site-explorer/metrics"
+    params = {"target": domain, "date": datetime.utcnow().strftime("%Y-%m-%d")}
+    code, data = ahrefs_get(url, params)
+    if code != 200:
+        return {"_error": f"metrics HTTP {code}", "_raw": data}
+    return data
+
+@st.cache_data(ttl=900)
+def get_organic_keywords(domain: str, country: str = "us", limit: int = 20) -> dict:
+    url = "https://api.ahrefs.com/v3/site-explorer/organic-keywords"
+    params = {"target": domain, "limit": limit, "country": country}
+    code, data = ahrefs_get(url, params)
+    if code != 200:
+        return {"_error": f"organic-keywords HTTP {code}", "_raw": data}
+    return data
+
+@st.cache_data(ttl=900)
+def get_backlinks_sample(domain: str, limit: int = 20) -> dict:
+    url = "https://api.ahrefs.com/v3/site-explorer/all-backlinks"
+    params = {"target": domain, "limit": limit, "order_by": "domain_rating:desc"}
+    code, data = ahrefs_get(url, params)
+    if code != 200:
+        return {"_error": f"all-backlinks HTTP {code}", "_raw": data}
+    return data
+
+@st.cache_data(ttl=900)
+def get_anchors(domain: str, limit: int = 20) -> dict:
+    url = "https://api.ahrefs.com/v3/site-explorer/anchors"
+    params = {"target": domain, "limit": limit}
+    code, data = ahrefs_get(url, params)
+    if code != 200:
+        return {"_error": f"anchors HTTP {code}", "_raw": data}
+    return data
+
+@st.cache_data(ttl=900)
+def get_refdomains(domain: str, limit: int = 10) -> dict:
+    url = "https://api.ahrefs.com/v3/site-explorer/refdomains"
+    params = {"target": domain, "limit": limit, "order_by": "domain_rating:desc"}
+    code, data = ahrefs_get(url, params)
+    if code != 200:
+        return {"_error": f"refdomains HTTP {code}", "_raw": data}
+    return data
+
+@st.cache_data(ttl=900)
+def get_organic_competitors(domain: str, country: str = "us", limit: int = 5) -> dict:
+    # Organic competitors exists in API v3 Site Explorer docs. :contentReference[oaicite:1]{index=1}
+    url = "https://api.ahrefs.com/v3/site-explorer/organic-competitors"
+    params = {"target": domain, "limit": limit, "country": country}
+    code, data = ahrefs_get(url, params)
+    if code != 200:
+        return {"_error": f"organic-competitors HTTP {code}", "_raw": data}
+    return data
+
+
+# ===========================
+# AHREFS: SITE AUDIT (projects/issues/page-explorer)
+# ===========================
+@st.cache_data(ttl=900)
+def site_audit_projects() -> dict:
+    # Health score/projects endpoint exists in API v3 Site Audit. :contentReference[oaicite:2]{index=2}
+    url = "https://api.ahrefs.com/v3/site-audit/projects"
+    code, data = ahrefs_get(url, params={})
+    if code != 200:
+        return {"_error": f"site-audit/projects HTTP {code}", "_raw": data}
+    return data
+
+def pick_project_for_domain(projects_payload: dict, domain: str):
+    """
+    Tries to find a Site Audit project matching the domain.
+    Because schemas can vary, this searches common keys.
+    Returns (project_obj, project_id_str) or (None, None).
+    """
+    candidates = []
+    items = safe_get(projects_payload, "projects", default=None)
+    if items is None and isinstance(projects_payload, dict):
+        # Sometimes APIs return list under "data" or "result"
+        for k in ("data", "result", "items"):
+            if isinstance(projects_payload.get(k), list):
+                items = projects_payload.get(k)
+                break
+    if not isinstance(items, list):
+        return None, None
+
+    for p in items:
+        target = (
+            p.get("target")
+            or p.get("domain")
+            or p.get("project_target")
+            or safe_get(p, "project", "target", default=None)
+            or ""
+        )
+        tdom = normalize_domain(target)
+        if tdom == domain:
+            # last crawl timestamp if exists
+            last_ts = p.get("crawl_timestamp") or p.get("last_crawl") or p.get("updated_at") or ""
+            candidates.append((p, last_ts))
+
+    if not candidates:
+        return None, None
+
+    # pick most recent by timestamp string (best-effort)
+    candidates.sort(key=lambda x: str(x[1]), reverse=True)
+    project = candidates[0][0]
+    pid = project.get("project_id") or project.get("id") or project.get("uuid")
+    return project, pid
+
+@st.cache_data(ttl=900)
+def site_audit_issues(project_id: str) -> dict:
+    # Project issues endpoint exists. :contentReference[oaicite:3]{index=3}
+    url = "https://api.ahrefs.com/v3/site-audit/issues"
+    params = {"project_id": project_id}
+    code, data = ahrefs_get(url, params=params)
+    if code != 200:
+        return {"_error": f"site-audit/issues HTTP {code}", "_raw": data}
+    return data
+
+def extract_issue_list(issues_payload: dict) -> list[dict]:
+    for k in ("issues", "data", "result", "items"):
+        v = issues_payload.get(k)
+        if isinstance(v, list):
+            return v
+    return []
+
+def find_issue_id(issues: list[dict], patterns: list[str]) -> tuple[str | None, int]:
+    """
+    Returns (issue_id, affected_count).
+    patterns: list of lowercase substrings to match in issue name/title.
+    """
+    best = None
+    best_count = 0
+    for it in issues:
+        name = (it.get("name") or it.get("title") or it.get("issue_name") or "").lower()
+        if not name:
+            continue
+        if any(p in name for p in patterns):
+            issue_id = it.get("issue_id") or it.get("id") or it.get("uuid")
+            count = (
+                it.get("urls_affected")
+                or it.get("affected_urls")
+                or it.get("affected_pages")
+                or it.get("count")
+                or 0
+            )
+            try:
+                count = int(count)
+            except Exception:
+                count = 0
+            if count >= best_count:
+                best = issue_id
+                best_count = count
+    return best, best_count
+
+@st.cache_data(ttl=900)
+def page_explorer(project_id: str, issue_id: str, limit: int = 200, offset: int = 0) -> dict:
+    # Page explorer exists; supports issue_id filtering. :contentReference[oaicite:4]{index=4}
+    url = "https://api.ahrefs.com/v3/site-audit/page-explorer"
+    params = {"project_id": project_id, "issue_id": issue_id, "limit": limit, "offset": offset}
+    code, data = ahrefs_get(url, params=params)
+    if code != 200:
+        return {"_error": f"site-audit/page-explorer HTTP {code}", "_raw": data}
+    return data
+
+def extract_page_rows(payload: dict) -> tuple[list[dict], int | None]:
+    """
+    Returns (rows, next_offset_or_none).
+    We support common response shapes: {"pages":[...], "next_offset": ...}
+    """
+    rows = None
+    for k in ("pages", "urls", "data", "items", "result"):
+        v = payload.get(k)
+        if isinstance(v, list):
+            rows = v
+            break
+    if rows is None:
+        rows = []
+    next_offset = payload.get("next_offset") or payload.get("offset_next")
+    return rows, next_offset
+
+def fetch_pages_for_issue(project_id: str, issue_id: str, max_rows: int = 300) -> list[dict]:
+    all_rows = []
+    offset = 0
+    limit = min(200, max_rows)
+    while True:
+        payload = page_explorer(project_id, issue_id, limit=limit, offset=offset)
+        if isinstance(payload, dict) and payload.get("_error"):
+            break
+        rows, next_offset = extract_page_rows(payload if isinstance(payload, dict) else {})
+        all_rows.extend(rows)
+        if len(all_rows) >= max_rows:
+            all_rows = all_rows[:max_rows]
+            break
+        # if API provides next offset use it
+        if next_offset is not None:
+            try:
+                offset = int(next_offset)
+            except Exception:
+                break
+            if offset <= 0:
+                break
+        else:
+            # fallback: assume offset pagination
+            if len(rows) < limit:
+                break
+            offset += limit
+        time.sleep(0.3)
+    return all_rows
+
+
+# ===========================
+# AI: GENERATE JSON SECTIONS
+# ===========================
+def run_llm(prompt_text: str, provider: str, gemini_model: str, claude_model: str) -> dict:
+    if provider == "Gemini":
+        model = genai.GenerativeModel(gemini_model)
+        resp = model.generate_content(prompt_text)
+        raw = strip_json_fences(getattr(resp, "text", "") or "")
+    else:
+        if not CLAUDE_AVAILABLE:
+            raise RuntimeError("Claude not available (missing key or SDK).")
+        client = anthropic.Anthropic(api_key=CLAUDE_API_KEY)
+        msg = client.messages.create(
+            model=claude_model,
+            max_tokens=1200,
+            temperature=0.2,
+            messages=[{"role": "user", "content": prompt_text}],
+        )
+        raw = strip_json_fences("".join([b.text for b in msg.content if hasattr(b, "text")]))
+
+    try:
+        return json.loads(raw)
+    except Exception:
+        # return raw for debugging
+        return {"_parse_error": True, "_raw": raw}
+
+
+# ===========================
+# DOCX TEMPLATE RENDER
+# ===========================
+PLACEHOLDER_RE = re.compile(r"\{\{[A-Z0-9_:\-]+\}\}")
+
+def replace_in_paragraph(paragraph, mapping: dict):
+    # naive replace on paragraph.text (good enough for your templates)
+    text = paragraph.text
+    for k, v in mapping.items():
+        if k in text:
+            text = text.replace(k, str(v))
+    if text != paragraph.text:
+        paragraph.text = text
+
+def replace_in_cell(cell, mapping: dict):
+    for p in cell.paragraphs:
+        replace_in_paragraph(p, mapping)
+
+def remove_instruction_paragraphs(doc: Document):
+    kill_phrases = [
+        "— e.g.",
+        "— 2-3 paragraph",
+        "— Brief overview",
+        "{{*_COUNT}}",
+        "{{KW_*}}",
+        "{{REF_*}}",
+        "{{COMP_*}}",
+        "Populate with",
+        "Use 0 or '-'",
+        "Up to 20",
+    ]
+    # remove paragraphs containing these instructions
+    for p in list(doc.paragraphs):
+        t = (p.text or "").strip()
+        if not t:
+            continue
+        if any(phrase in t for phrase in kill_phrases):
+            p._element.getparent().remove(p._element)
+
+def fill_keyword_table(table, keywords: list[dict], max_rows: int = 10):
+    # table has header + 2 placeholder rows + "..." row. We'll replace by header + N rows.
+    # Keep header row, then clear remaining rows and rebuild.
+    while len(table.rows) > 1:
+        tbl = table._tbl
+        tbl.remove(table.rows[1]._tr)
+
+    # Insert up to max_rows keywords
+    for kw in keywords[:max_rows]:
+        row = table.add_row().cells
+        row[0].text = str(kw.get("keyword", kw.get("kw", "")) or "")
+        row[1].text = str(kw.get("position", kw.get("pos", "")) or "")
+        row[2].text = str(kw.get("volume", kw.get("vol", "")) or "")
+        row[3].text = str(kw.get("traffic", kw.get("traf", "")) or "")
+        row[4].text = str(kw.get("value", kw.get("traffic_value", "")) or "")
+        row[5].text = str(kw.get("url", kw.get("ranking_url", "")) or "")
+
+def fill_refdomains_table(table, refdomains: list[dict], max_rows: int = 10):
+    # header row only, then build
+    while len(table.rows) > 1:
+        tbl = table._tbl
+        tbl.remove(table.rows[1]._tr)
+
+    for rd in refdomains[:max_rows]:
+        row = table.add_row().cells
+        row[0].text = str(rd.get("domain", rd.get("refdomain", "")) or "")
+        row[1].text = str(rd.get("domain_rating", rd.get("dr", "")) or "")
+        row[2].text = str(rd.get("links", rd.get("backlinks", "")) or "")
+        row[3].text = str(rd.get("dofollow_links", rd.get("dofollow", "")) or "")
+        row[4].text = str(rd.get("traffic", rd.get("organic_traffic", "")) or "")
+
+def render_docx_full(template_path: Path, mapping: dict, keywords: list[dict], refdomains: list[dict]) -> BytesIO:
+    doc = Document(str(template_path))
+
+    # replace paragraphs
+    for p in doc.paragraphs:
+        replace_in_paragraph(p, mapping)
+
+    # replace tables cells
+    for t in doc.tables:
+        for row in t.rows:
+            for cell in row.cells:
+                replace_in_cell(cell, mapping)
+
+    # expand keyword table (table index 5 in your template)
+    if len(doc.tables) >= 6:
+        fill_keyword_table(doc.tables[5], keywords, max_rows=10)
+
+    # expand refdomains table (table index 8)
+    if len(doc.tables) >= 9:
+        fill_refdomains_table(doc.tables[8], refdomains, max_rows=10)
+
+    # remove instruction paragraphs
+    remove_instruction_paragraphs(doc)
+
+    # final cleanup: if placeholders remain, blank them
+    for p in doc.paragraphs:
+        if PLACEHOLDER_RE.search(p.text or ""):
+            p.text = PLACEHOLDER_RE.sub("", p.text).strip()
+
+    bio = BytesIO()
+    doc.save(bio)
+    bio.seek(0)
+    return bio
+
+
+# ===========================
+# XLSX TEMPLATE RENDER
+# ===========================
+def clear_sheet_from_row(ws, start_row: int):
+    # delete all rows from start_row to end
+    maxr = ws.max_row
+    if maxr >= start_row:
+        ws.delete_rows(start_row, maxr - start_row + 1)
+
+def append_rows(ws, rows: list[list]):
+    for r in rows:
+        ws.append(r)
+
+def slug_to_title(url: str) -> str:
+    try:
+        path = urlparse(url).path.strip("/")
+        if not path:
+            return ""
+        last = path.split("/")[-1]
+        last = re.sub(r"[-_]+", " ", last).strip()
+        return last.title()
+    except Exception:
+        return ""
+
+def suggest_h1(current_title: str, url: str) -> str:
+    t = (current_title or "").strip()
+    if t and t.lower() != "missing":
+        return t[:70]
+    s = slug_to_title(url)
+    return s[:70] if s else ""
+
+def suggest_title(current_title: str, url: str) -> str:
+    t = (current_title or "").strip()
+    if not t or t.lower() == "missing":
+        t = slug_to_title(url)
+    # trim to ~60 chars
+    return (t[:60]).strip()
+
+def suggest_meta(current_meta: str, title: str) -> str:
+    m = (current_meta or "").strip()
+    if m and m.lower() != "missing":
+        return m[:155].strip()
+    t = (title or "").strip()
+    return (t[:150]).strip()
+
+def suggest_alt(image_url: str, page_url: str) -> str:
+    name = ""
+    try:
+        name = urlparse(image_url).path.split("/")[-1]
+    except Exception:
+        pass
+    name = re.sub(r"\.(png|jpg|jpeg|webp|gif|svg)$", "", name, flags=re.IGNORECASE)
+    name = re.sub(r"[-_]+", " ", name).strip()
+    if not name:
+        name = slug_to_title(page_url)
+    return name[:80]
+
+def render_xlsx_full(template_path: Path, issue_rows_by_sheet: dict, max_rows_per_sheet: int) -> BytesIO:
+    wb = openpyxl.load_workbook(str(template_path))
+
+    # For each issue sheet: clear placeholder row2 and fill
+    for sheet_name, rows in issue_rows_by_sheet.items():
+        if sheet_name not in wb.sheetnames:
+            continue
+        ws = wb[sheet_name]
+        clear_sheet_from_row(ws, 2)
+        if rows:
+            append_rows(ws, rows[:max_rows_per_sheet])
+
+    out = BytesIO()
+    wb.save(out)
+    out.seek(0)
+    return out
+
+
+# ===========================
+# UI
 # ===========================
 with st.sidebar:
-    st.markdown("### 🏢 System Status")
-    
-    if GEMINI_AVAILABLE:
-        st.markdown('<span class="status-badge status-connected">🟢 Gemini Connected</span>', unsafe_allow_html=True)
-    else:
-        st.markdown('<span class="status-badge status-disconnected">🔴 Gemini Offline</span>', unsafe_allow_html=True)
-    
-    if CLAUDE_AVAILABLE:
-        st.markdown('<span class="status-badge status-connected">🟢 Claude Connected</span>', unsafe_allow_html=True)
-    else:
-        st.markdown('<span class="status-badge status-disconnected">🔴 Claude Offline</span>', unsafe_allow_html=True)
-    
-    if AHREFS_AVAILABLE:
-        st.markdown('<span class="status-badge status-connected">🟢 Ahrefs Connected</span>', unsafe_allow_html=True)
-    else:
-        st.markdown('<span class="status-badge status-optional">⚠️ Ahrefs Optional</span>', unsafe_allow_html=True)
-    
-    st.markdown("---")
-    
-    st.markdown("### ℹ️ About")
-    st.markdown("""
-    **Claudio** generates professional SEO audits in seconds.
-    
-    **Features**:
-    - 🔍 Basic visual analysis
-    - 💎 Full analysis with Ahrefs
-    - 🤖 AI-powered insights
-    - 📄 Professional reports
-    """)
-    
-    st.markdown("---")
-    st.caption("v2.1 - Template Edition")
+    st.markdown("### System Status")
+    st.write("Gemini:", "✅" if GEMINI_AVAILABLE else "❌")
+    st.write("Claude:", "✅" if CLAUDE_AVAILABLE else "❌")
+    st.write("Ahrefs:", "✅" if AHREFS_AVAILABLE else "❌")
 
-# ===========================
-# 🎯 MAIN INTERFACE
-# ===========================
+st.title("CLAUDIO — SEO Auditor (Template Output)")
 
-st.markdown("""
-<div class="claudio-header">
-    <div class="claudio-avatar-large">👔</div>
-    <div class="claudio-title">CLAUDIO</div>
-    <div class="claudio-subtitle">Professional SEO Auditor</div>
-</div>
-""", unsafe_allow_html=True)
+audit_type = st.radio("Audit Type", ["Basic", "Full (Ahrefs Site Audit Project)"])
 
-# Configuration
-col1, col2 = st.columns([2, 1])
+provider_options = []
+if GEMINI_AVAILABLE:
+    provider_options.append("Gemini")
+if CLAUDE_AVAILABLE:
+    provider_options.append("Claude")
 
-with col1:
-    audit_type = st.radio(
-        "Audit Type",
-        ["🔍 Basic (Visual Analysis)", "💎 Full (With Ahrefs Data)"],
-        help="Basic: Quick visual analysis\nFull: Complete with Ahrefs metrics"
+if not provider_options:
+    st.error("No AI provider configured. Add GOOGLE_API_KEY and/or ANTHROPIC_API_KEY in Streamlit Secrets.")
+    st.stop()
+
+provider = st.selectbox("AI Provider", provider_options, index=0)
+
+gemini_model = st.text_input("Gemini model", value="gemini-2.0-flash")
+claude_model = st.text_input("Claude model", value="claude-3-5-sonnet-20241022")
+
+country = st.text_input("Country (Ahrefs)", value="us")
+max_urls_per_issue = st.number_input("Max URLs per issue (Excel)", min_value=10, max_value=2000, value=300, step=50)
+debug_ahrefs = st.checkbox("Debug Ahrefs responses", value=False)
+
+url_input = st.text_input("Website URL", placeholder="https://example.com")
+
+run_btn = st.button("Generate Audit")
+
+if run_btn:
+    if not url_input:
+        st.error("Enter a URL.")
+        st.stop()
+
+    domain = normalize_domain(url_input)
+    if not domain:
+        st.error("Could not parse domain from URL.")
+        st.stop()
+
+    audit_date = datetime.utcnow().strftime("%B %Y")
+
+    # ---------------------------
+    # BASIC DATA
+    # ---------------------------
+    progress = st.progress(0)
+    status = st.empty()
+    status.write("Analyzing page...")
+    progress.progress(15)
+
+    basic_data = {}
+    try:
+        basic_data = analyze_basic_site(url_input)
+    except Exception as e:
+        basic_data = {"_error": str(e)}
+
+    # ---------------------------
+    # FULL: AHREFS COLLECTION
+    # ---------------------------
+    metrics = {}
+    kw_payload = {}
+    backlinks_payload = {}
+    anchors_payload = {}
+    refdomains_payload = {}
+    competitors_payload = {}
+    sa_projects = {}
+    sa_project = None
+    sa_project_id = None
+    sa_issues_payload = {}
+    issues_list = []
+
+    issue_counts = {}     # sheet_key -> count
+    issue_ids = {}        # sheet_key -> issue_id
+    issue_rows_by_sheet = {}  # sheet_name -> rows to write in Excel
+
+    if audit_type.startswith("Full"):
+        if not AHREFS_AVAILABLE:
+            st.error("Ahrefs key missing. Full audit needs AHREFS_API_KEY.")
+            st.stop()
+
+        status.write("Fetching Ahrefs (Site Explorer)...")
+        progress.progress(30)
+        metrics = get_site_explorer_metrics(domain)
+        kw_payload = get_organic_keywords(domain, country=country, limit=50)
+        backlinks_payload = get_backlinks_sample(domain, limit=30)
+        anchors_payload = get_anchors(domain, limit=20)
+        refdomains_payload = get_refdomains(domain, limit=20)
+        competitors_payload = get_organic_competitors(domain, country=country, limit=5)
+
+        status.write("Resolving Ahrefs Site Audit project...")
+        progress.progress(45)
+        sa_projects = site_audit_projects()
+        sa_project, sa_project_id = pick_project_for_domain(sa_projects, domain)
+
+        if not sa_project_id:
+            if debug_ahrefs:
+                st.subheader("Debug: Site Audit Projects raw")
+                st.json(sa_projects)
+            st.error(f"No Ahrefs Site Audit project found for domain: {domain}")
+            st.stop()
+
+        status.write("Fetching Site Audit issues...")
+        progress.progress(55)
+        sa_issues_payload = site_audit_issues(sa_project_id)
+        issues_list = extract_issue_list(sa_issues_payload)
+
+        if debug_ahrefs:
+            with st.expander("Debug: Site Audit issues raw"):
+                st.json(sa_issues_payload)
+
+        # Map issues -> your template sheets
+        ISSUE_MAP = {
+            "H1 Missing": ["missing h1", "h1 missing"],
+            "Multiple H1": ["multiple h1", "more than one h1"],
+            "Duplicate Titles": ["duplicate title"],
+            "Duplicate Meta": ["duplicate meta description", "duplicate description"],
+            "Title Too Long": ["title too long", "meta title too long"],
+            "Title Too Short": ["title too short", "meta title too short"],
+            "Meta Too Long": ["meta description too long", "description too long"],
+            "Meta Too Short": ["meta description too short", "description too short"],
+            "Missing Canonical": ["missing canonical"],
+            "Broken Internal": ["broken internal", "internal link", "links to broken page", "broken link to"],
+            "Broken External": ["broken external", "external link"],
+            "Redirect Chains": ["redirect chain", "redirects chain"],
+            "Orphan Pages": ["orphan page", "orphaned page"],
+            "Missing Alt Text": ["missing alt", "alt text"],
+            "Broken Images": ["broken image"],
+            "Thin Content": ["thin content", "low word count", "below 300 words"],
+            # extra (Word-only table):
+            "ROBOTS_MISSING": ["missing robots.txt", "robots.txt is missing"],
+            "SITEMAP_MISSING": ["missing xml sitemap", "sitemap.xml is missing", "missing sitemap"],
+            "HTTPS_ISSUES": ["mixed content", "http/https mixed"],
+        }
+
+        # Get issue ids + counts
+        for sheet_name, pats in ISSUE_MAP.items():
+            iid, cnt = find_issue_id(issues_list, pats)
+            issue_ids[sheet_name] = iid
+            issue_counts[sheet_name] = cnt
+
+        # Fetch page explorer rows for the Excel sheets (only for actual sheets + count>0)
+        status.write("Fetching affected URLs for Excel sheets...")
+        progress.progress(70)
+
+        for sheet_name in [
+            "H1 Missing","Multiple H1","Duplicate Titles","Duplicate Meta","Title Too Long","Title Too Short",
+            "Meta Too Long","Meta Too Short","Missing Canonical","Broken Internal","Broken External","Redirect Chains",
+            "Orphan Pages","Missing Alt Text","Broken Images","Thin Content"
+        ]:
+            iid = issue_ids.get(sheet_name)
+            cnt = issue_counts.get(sheet_name, 0)
+            if not iid or cnt <= 0:
+                issue_rows_by_sheet[sheet_name] = []
+                continue
+
+            rows = fetch_pages_for_issue(sa_project_id, iid, max_rows=max_urls_per_issue)
+
+            # Convert Ahrefs rows -> your sheet columns
+            formatted = []
+            if sheet_name in ["H1 Missing", "Multiple H1", "Duplicate Titles", "Duplicate Meta",
+                              "Title Too Long","Title Too Short","Meta Too Long","Meta Too Short","Thin Content"]:
+                for r in rows:
+                    url = r.get("url") or r.get("page_url") or r.get("address") or ""
+                    title = r.get("title") or r.get("meta_title") or r.get("page_title") or ""
+                    meta = r.get("meta_description") or r.get("description") or ""
+                    wc = r.get("word_count") or r.get("words") or r.get("content_word_count") or ""
+                    # priority: use fixed from template row2 when present; we set sensible defaults
+                    pr = "HIGH" if sheet_name in ["H1 Missing","Duplicate Titles","Duplicate Meta"] else "MEDIUM"
+                    if sheet_name in ["Thin Content"]:
+                        pr = "MEDIUM"
+                    suggested = ""
+                    if sheet_name in ["H1 Missing", "Multiple H1"]:
+                        suggested = suggest_h1(title, url)
+                    elif sheet_name in ["Duplicate Titles","Title Too Long","Title Too Short"]:
+                        suggested = suggest_title(title, url)
+                    elif sheet_name in ["Duplicate Meta","Meta Too Long","Meta Too Short"]:
+                        suggested = suggest_meta(meta, title)
+                    elif sheet_name == "Thin Content":
+                        suggested = "Expand content to match search intent; add sections, FAQs, examples; aim for 700–1200 words where relevant."
+                    formatted.append([url, title, meta, wc, pr, suggested])
+
+            elif sheet_name in ["Missing Canonical"]:
+                # URL, Current Canonical, Recommended Canonical, Priority, Suggested Fix
+                for r in rows:
+                    url = r.get("url") or r.get("page_url") or ""
+                    current = r.get("canonical") or r.get("current_canonical") or ""
+                    recommended = url
+                    pr = "HIGH"
+                    fix = "Add a self-referencing canonical tag (or correct it to the preferred URL)."
+                    formatted.append([url, current, recommended, pr, fix])
+
+            elif sheet_name in ["Broken Internal","Broken External"]:
+                # Source URL, Broken Link URL, HTTP Status, Anchor Text, Priority, Suggested Fix
+                for r in rows:
+                    source = r.get("source_url") or r.get("url") or r.get("page_url") or ""
+                    broken = r.get("broken_url") or r.get("link_url") or r.get("target_url") or ""
+                    status_code = r.get("status") or r.get("http_status") or r.get("status_code") or ""
+                    anchor = r.get("anchor") or r.get("anchor_text") or ""
+                    pr = "HIGH" if sheet_name == "Broken Internal" else "MEDIUM"
+                    fix = "Update the link to a valid URL (or remove it). If moved, link directly to the final destination."
+                    formatted.append([source, broken, status_code, anchor, pr, fix])
+
+            elif sheet_name in ["Redirect Chains"]:
+                # Initial URL, Redirect Chain, Final URL, Chain Length, Priority
+                for r in rows:
+                    initial = r.get("initial_url") or r.get("url") or ""
+                    chain = r.get("chain") or r.get("redirect_chain") or r.get("chain_path") or ""
+                    final = r.get("final_url") or r.get("destination_url") or ""
+                    length = r.get("length") or r.get("chain_length") or ""
+                    pr = "MEDIUM"
+                    formatted.append([initial, chain, final, length, pr])
+
+            elif sheet_name in ["Orphan Pages"]:
+                # URL, Estimated Traffic, Priority, Suggested Fix
+                for r in rows:
+                    url = r.get("url") or r.get("page_url") or ""
+                    traf = r.get("traffic") or r.get("estimated_traffic") or ""
+                    pr = "MEDIUM"
+                    fix = "Add internal links from relevant hub/category pages and ensure it’s in navigation/sitemaps where appropriate."
+                    formatted.append([url, traf, pr, fix])
+
+            elif sheet_name in ["Missing Alt Text"]:
+                # Page URL, Image URL, Priority, Suggested Alt Text
+                for r in rows:
+                    page = r.get("page_url") or r.get("url") or ""
+                    img = r.get("image_url") or r.get("url_image") or r.get("asset_url") or ""
+                    pr = "LOW"
+                    alt = suggest_alt(img, page)
+                    formatted.append([page, img, pr, alt])
+
+            elif sheet_name in ["Broken Images"]:
+                # Page URL, Broken Image URL, HTTP Status, Priority, Suggested Fix
+                for r in rows:
+                    page = r.get("page_url") or r.get("url") or ""
+                    img = r.get("broken_image_url") or r.get("image_url") or r.get("asset_url") or ""
+                    status_code = r.get("status") or r.get("http_status") or r.get("status_code") or ""
+                    pr = "LOW"
+                    fix = "Fix the image URL, upload missing asset, or remove the broken image reference."
+                    formatted.append([page, img, status_code, pr, fix])
+
+            issue_rows_by_sheet[sheet_name] = formatted
+
+        if debug_ahrefs:
+            with st.expander("Debug: Example mapped sheet rows"):
+                for k, v in list(issue_rows_by_sheet.items())[:3]:
+                    st.write(k, "rows:", len(v))
+                    st.json(v[:2])
+
+    # ---------------------------
+    # Build CONTEXT for prompt
+    # ---------------------------
+    status.write("Building AI context...")
+    progress.progress(80)
+
+    top_keywords = []
+    kw_items = safe_get(kw_payload, "keywords", default=None)
+    if kw_items is None:
+        kw_items = safe_get(kw_payload, "data", default=[]) if isinstance(kw_payload, dict) else []
+    if isinstance(kw_items, list):
+        for it in kw_items[:10]:
+            top_keywords.append({
+                "keyword": it.get("keyword") or it.get("kw"),
+                "position": it.get("position") or it.get("pos"),
+                "volume": it.get("volume") or it.get("vol"),
+                "traffic": it.get("traffic") or it.get("traf"),
+                "value": it.get("traffic_value") or it.get("value"),
+                "url": it.get("url") or it.get("ranking_url"),
+            })
+
+    # keyword distribution
+    dist = {"1_3": 0, "4_10": 0, "11_20": 0, "21_50": 0, "51_100": 0}
+    for it in kw_items[:100] if isinstance(kw_items, list) else []:
+        pos = it.get("position") or it.get("pos")
+        try:
+            pos = int(pos)
+        except Exception:
+            continue
+        if 1 <= pos <= 3: dist["1_3"] += 1
+        elif 4 <= pos <= 10: dist["4_10"] += 1
+        elif 11 <= pos <= 20: dist["11_20"] += 1
+        elif 21 <= pos <= 50: dist["21_50"] += 1
+        elif 51 <= pos <= 100: dist["51_100"] += 1
+
+    # Site Explorer metrics extraction (flexible)
+    m = safe_get(metrics, "metrics", default=metrics) if isinstance(metrics, dict) else {}
+    domain_rating = m.get("domain_rating") or m.get("dr") or 0
+    ahrefs_rank = m.get("ahrefs_rank") or m.get("rank") or ""
+    backlinks_total = m.get("backlinks") or 0
+    refdomains_total = m.get("refdomains") or m.get("referring_domains") or 0
+    organic_keywords = m.get("organic_keywords") or 0
+    organic_traffic = m.get("organic_traffic") or 0
+    dofollow_backlinks = m.get("dofollow_backlinks") or m.get("dofollow") or ""
+    dofollow_refdomains = m.get("dofollow_refdomains") or ""
+
+    # Competitors list
+    competitors = []
+    comp_items = safe_get(competitors_payload, "competitors", default=None)
+    if comp_items is None:
+        comp_items = safe_get(competitors_payload, "data", default=[]) if isinstance(competitors_payload, dict) else []
+    if isinstance(comp_items, list):
+        for c in comp_items[:5]:
+            competitors.append({
+                "domain": c.get("domain") or c.get("target") or "",
+                "domain_rating": c.get("domain_rating") or c.get("dr") or "",
+                "refdomains": c.get("refdomains") or c.get("referring_domains") or "",
+                "keywords": c.get("organic_keywords") or c.get("keywords") or "",
+                "traffic": c.get("organic_traffic") or c.get("traffic") or "",
+                "traffic_value": c.get("traffic_value") or c.get("value") or "",
+                "common_keywords": c.get("common_keywords") or "",
+            })
+
+    context = {
+        "domain": domain,
+        "audit_date": audit_date,
+        "basic_data": basic_data,
+        "site_explorer": {
+            "domain_rating": domain_rating,
+            "ahrefs_rank": ahrefs_rank,
+            "backlinks_total": backlinks_total,
+            "refdomains_total": refdomains_total,
+            "organic_keywords": organic_keywords,
+            "organic_traffic": organic_traffic,
+            "dofollow_backlinks": dofollow_backlinks,
+            "dofollow_refdomains": dofollow_refdomains,
+        },
+        "site_audit": {
+            "project_id": sa_project_id,
+            "issue_counts": issue_counts,
+        } if audit_type.startswith("Full") else {},
+        "top_keywords": top_keywords,
+        "keyword_distribution": dist,
+        "competitors": competitors,
+    }
+
+    # ---------------------------
+    # AI SECTIONS
+    # ---------------------------
+    status.write("Generating AI narrative blocks...")
+    progress.progress(90)
+
+    prompt_path = PROMPT_FULL if audit_type.startswith("Full") else PROMPT_BASIC
+    prompt_text = load_prompt(prompt_path).replace("{{CONTEXT_JSON}}", json.dumps(context, ensure_ascii=False, indent=2))
+
+    ai = run_llm(prompt_text, provider=provider, gemini_model=gemini_model, claude_model=claude_model)
+    if ai.get("_parse_error"):
+        st.error("AI output was not valid JSON. Enable debug or tighten the prompt.")
+        st.code(ai.get("_raw", "")[:4000])
+        st.stop()
+
+    # ---------------------------
+    # Build DOCX placeholder mapping
+    # ---------------------------
+    content_issues_count = sum(issue_counts.get(k, 0) for k in [
+        "H1 Missing","Multiple H1","Duplicate Titles","Duplicate Meta","Title Too Long","Title Too Short",
+        "Meta Too Long","Meta Too Short","Thin Content","Missing Alt Text","Broken Images"
+    ])
+    technical_issues_count = sum(issue_counts.get(k, 0) for k in [
+        "Missing Canonical","Broken Internal","Broken External","Redirect Chains","Orphan Pages",
+        "ROBOTS_MISSING","SITEMAP_MISSING","HTTPS_ISSUES"
+    ])
+
+    mapping = {
+        "{{DOMAIN}}": domain,
+        "{{AUDIT_DATE}}": audit_date,
+
+        "{{DOMAIN_RATING}}": domain_rating,
+        "{{REFERRING_DOMAINS}}": refdomains_total,
+        "{{ORGANIC_KEYWORDS}}": organic_keywords,
+        "{{ORGANIC_TRAFFIC}}": organic_traffic,
+
+        "{{CONTENT_ISSUES_COUNT}}": content_issues_count,
+        "{{TECHNICAL_ISSUES_COUNT}}": technical_issues_count,
+
+        "{{CONTENT_PRIORITY}}": priority_from_count(content_issues_count),
+        "{{TECHNICAL_PRIORITY}}": priority_from_count(technical_issues_count),
+
+        "{{BACKLINK_OPP_COUNT}}": refdomains_total,
+        "{{COMPETITIVE_GAPS_COUNT}}": len(competitors),
+
+        "{{EXECUTIVE_SUMMARY}}": ai.get("executive_summary", ""),
+        "{{CONTENT_AUDIT_SUMMARY}}": ai.get("content_audit_summary", ""),
+        "{{TECHNICAL_AUDIT_SUMMARY}}": ai.get("technical_audit_summary", ""),
+        "{{KEYWORD_OVERVIEW}}": ai.get("keyword_overview", ""),
+        "{{BACKLINK_OBSERVATIONS}}": ai.get("backlink_observations", ""),
+        "{{COMPETITIVE_ANALYSIS}}": ai.get("competitive_analysis", ""),
+
+        "{{MISSING_H1_COUNT}}": issue_counts.get("H1 Missing", 0),
+        "{{MULTIPLE_H1_COUNT}}": issue_counts.get("Multiple H1", 0),
+        "{{DUP_TITLES_COUNT}}": issue_counts.get("Duplicate Titles", 0),
+        "{{DUP_META_COUNT}}": issue_counts.get("Duplicate Meta", 0),
+
+        "{{TITLE_LONG_COUNT}}": issue_counts.get("Title Too Long", 0),
+        "{{TITLE_SHORT_COUNT}}": issue_counts.get("Title Too Short", 0),
+        "{{META_LONG_COUNT}}": issue_counts.get("Meta Too Long", 0),
+        "{{META_SHORT_COUNT}}": issue_counts.get("Meta Too Short", 0),
+        "{{THIN_CONTENT_COUNT}}": issue_counts.get("Thin Content", 0),
+        "{{MISSING_ALT_COUNT}}": issue_counts.get("Missing Alt Text", 0),
+        "{{BROKEN_IMAGES_COUNT}}": issue_counts.get("Broken Images", 0),
+
+        "{{TITLE_LONG_PRIORITY}}": priority_from_count(issue_counts.get("Title Too Long", 0)),
+        "{{TITLE_SHORT_PRIORITY}}": priority_from_count(issue_counts.get("Title Too Short", 0)),
+        "{{META_LONG_PRIORITY}}": priority_from_count(issue_counts.get("Meta Too Long", 0)),
+        "{{META_SHORT_PRIORITY}}": priority_from_count(issue_counts.get("Meta Too Short", 0)),
+        "{{THIN_CONTENT_PRIORITY}}": priority_from_count(issue_counts.get("Thin Content", 0)),
+        "{{MISSING_ALT_PRIORITY}}": priority_from_count(issue_counts.get("Missing Alt Text", 0)),
+        "{{BROKEN_IMAGES_PRIORITY}}": priority_from_count(issue_counts.get("Broken Images", 0)),
+
+        "{{MISSING_CANONICAL_COUNT}}": issue_counts.get("Missing Canonical", 0),
+        "{{BROKEN_INTERNAL_COUNT}}": issue_counts.get("Broken Internal", 0),
+        "{{BROKEN_EXTERNAL_COUNT}}": issue_counts.get("Broken External", 0),
+        "{{REDIRECT_CHAINS_COUNT}}": issue_counts.get("Redirect Chains", 0),
+        "{{ORPHAN_PAGES_COUNT}}": issue_counts.get("Orphan Pages", 0),
+
+        "{{MISSING_CANONICAL_PRIORITY}}": priority_from_count(issue_counts.get("Missing Canonical", 0)),
+        "{{BROKEN_INTERNAL_PRIORITY}}": priority_from_count(issue_counts.get("Broken Internal", 0)),
+        "{{BROKEN_EXTERNAL_PRIORITY}}": priority_from_count(issue_counts.get("Broken External", 0)),
+        "{{REDIRECT_CHAINS_PRIORITY}}": priority_from_count(issue_counts.get("Redirect Chains", 0)),
+        "{{ORPHAN_PAGES_PRIORITY}}": priority_from_count(issue_counts.get("Orphan Pages", 0)),
+
+        "{{ROBOTS_MISSING}}": issue_counts.get("ROBOTS_MISSING", 0),
+        "{{SITEMAP_MISSING}}": issue_counts.get("SITEMAP_MISSING", 0),
+        "{{HTTPS_ISSUES_COUNT}}": issue_counts.get("HTTPS_ISSUES", 0),
+
+        "{{ROBOTS_PRIORITY}}": priority_from_count(issue_counts.get("ROBOTS_MISSING", 0)),
+        "{{SITEMAP_PRIORITY}}": priority_from_count(issue_counts.get("SITEMAP_MISSING", 0)),
+        "{{HTTPS_PRIORITY}}": priority_from_count(issue_counts.get("HTTPS_ISSUES", 0)),
+
+        "{{KW_POS_1_3}}": dist["1_3"],
+        "{{KW_POS_4_10}}": dist["4_10"],
+        "{{KW_POS_11_20}}": dist["11_20"],
+        "{{KW_POS_21_50}}": dist["21_50"],
+        "{{KW_POS_51_100}}": dist["51_100"],
+
+        # Backlink metrics table placeholders
+        "{{DR}}": domain_rating,
+        "{{AHREFS_RANK}}": ahrefs_rank,
+        "{{BACKLINKS}}": backlinks_total,
+        "{{DOFOLLOW_BACKLINKS}}": dofollow_backlinks,
+        "{{REFDOMAINS}}": refdomains_total,
+        "{{DOFOLLOW_REFDOMAINS}}": dofollow_refdomains,
+    }
+
+    # Quick wins (5)
+    qw = ai.get("quick_wins", []) if isinstance(ai.get("quick_wins"), list) else []
+    while len(qw) < 5:
+        qw.append({"action": "", "impact": "Medium", "effort": "Low"})
+    for i in range(5):
+        mapping[f"{{{{QUICK_WIN_{i+1}}}}}"] = qw[i].get("action", "")
+        mapping[f"{{{{QW{i+1}_IMPACT}}}}"] = qw[i].get("impact", "Medium")
+        mapping[f"{{{{QW{i+1}_EFFORT}}}}"] = qw[i].get("effort", "Low")
+
+    # Competitors (fill up to 5)
+    mapping["{{YOUR_DR}}"] = domain_rating
+    mapping["{{YOUR_REFDOM}}"] = refdomains_total
+    mapping["{{YOUR_KW}}"] = organic_keywords
+    mapping["{{YOUR_TRAFFIC}}"] = organic_traffic
+    mapping["{{YOUR_VALUE}}"] = ""  # not always available
+
+    for i in range(5):
+        c = competitors[i] if i < len(competitors) else {}
+        mapping[f"{{{{COMP_{i+1}}}}}"] = c.get("domain", "")
+        mapping[f"{{{{COMP_{i+1}_DR}}}}"] = c.get("domain_rating", "")
+        mapping[f"{{{{COMP_{i+1}_REFDOM}}}}"] = c.get("refdomains", "")
+        mapping[f"{{{{COMP_{i+1}_KW}}}}"] = c.get("keywords", "")
+        mapping[f"{{{{COMP_{i+1}_TRAFFIC}}}}"] = c.get("traffic", "")
+        mapping[f"{{{{COMP_{i+1}_VALUE}}}}"] = c.get("traffic_value", "")
+
+    # Refdomains list for Word table
+    rd_items = safe_get(refdomains_payload, "refdomains", default=None)
+    if rd_items is None:
+        rd_items = safe_get(refdomains_payload, "data", default=[]) if isinstance(refdomains_payload, dict) else []
+    refdomains_list = rd_items if isinstance(rd_items, list) else []
+
+    # ---------------------------
+    # Render outputs
+    # ---------------------------
+    status.write("Rendering templates (DOCX/XLSX)...")
+    progress.progress(98)
+
+    # DOCX
+    docx_out = render_docx_full(DOCX_TEMPLATE_FULL, mapping, top_keywords, refdomains_list)
+
+    # XLSX only for Full
+    xlsx_out = None
+    if audit_type.startswith("Full"):
+        xlsx_out = render_xlsx_full(XLSX_TEMPLATE_FULL, issue_rows_by_sheet, max_rows_per_issue)
+
+    progress.progress(100)
+    status.write("Done.")
+
+    st.success("Audit generated.")
+
+    # Preview AI blocks
+    with st.expander("AI blocks (JSON)"):
+        st.json(ai)
+
+    # Downloads
+    st.subheader("Download")
+    st.download_button(
+        "Download Word report (.docx)",
+        data=docx_out,
+        file_name=f"SEO_Audit_{domain}_{datetime.utcnow().strftime('%Y%m%d')}.docx",
+        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        use_container_width=True,
     )
 
-with col2:
-    if "Full" in audit_type:
-        st.info("**Full Audit**\n\n✓ Domain Rating\n✓ Backlinks\n✓ Keywords\n✓ Traffic data")
-    else:
-        st.info("**Basic Audit**\n\n✓ Technical SEO\n✓ On-page analysis\n✓ Quick insights")
-
-st.markdown("---")
-
-# AI Model
-col1, col2 = st.columns([3, 1])
-
-with col1:
-    available_models = []
-    
-    if GEMINI_AVAILABLE:
-        available_models.append("⚡ Gemini 2.0 Flash")
-    
-    if CLAUDE_AVAILABLE:
-        available_models.extend([
-            "🎯 Claude Sonnet 4.5",
-            "👑 Claude Opus 4.5"
-        ])
-    
-    if not available_models:
-        st.error("❌ No AI models configured.")
-        st.stop()
-    
-    selected_model = st.selectbox("AI Model", available_models)
-
-st.markdown("---")
-
-# URL Input
-url_input = st.text_input(
-    "Website URL",
-    placeholder="https://example.com",
-    help="Enter the full URL including https://"
-)
-
-# Confirmation
-if "Full" in audit_type:
-    if AHREFS_AVAILABLE:
-        st.warning("⚠️ Full Audit will use Ahrefs API credits")
-        confirm_ahrefs = st.checkbox("✓ Confirm Ahrefs API usage", value=False)
-    else:
-        st.error("❌ Ahrefs API not configured. Cannot perform Full audit.")
-        confirm_ahrefs = False
-else:
-    confirm_ahrefs = True
-
-st.markdown("---")
-
-# Generate Button
-col1, col2, col3 = st.columns([1, 2, 1])
-
-with col2:
-    button_disabled = not url_input or not confirm_ahrefs
-    
-    if st.button("🚀 Generate Audit", disabled=button_disabled, use_container_width=True):
-        
-        if not url_input:
-            st.error("❌ Please enter a URL")
-        else:
-            st.markdown("---")
-            
-            progress_bar = st.progress(0)
-            status_text = st.empty()
-            
-            # Step 1: Analyze site
-            status_text.text("🔍 Analyzing website...")
-            progress_bar.progress(20)
-            site_data = analyze_basic_site(url_input)
-            time.sleep(1)
-            
-            if 'error' in site_data:
-                st.error(f"❌ Error: {site_data['error']}")
-                st.stop()
-            
-            # Step 2: Get Ahrefs data if Full
-            ahrefs_data = None
-            if "Full" in audit_type and AHREFS_AVAILABLE:
-                status_text.text("📊 Fetching Ahrefs data...")
-                progress_bar.progress(40)
-                ahrefs_data = get_ahrefs_data(url_input)
-                time.sleep(1)
-            
-            # Step 3: Generate audit
-            status_text.text("🤖 Generating audit content...")
-            progress_bar.progress(60)
-            
-            type_audit = "Basic" if "Basic" in audit_type else "Full"
-            
-            audit_content = generate_audit_content(url_input, site_data, ahrefs_data, type_audit)
-            
-            # Step 4: Create documents
-            status_text.text("📄 Creating documents...")
-            progress_bar.progress(80)
-            
-            site_name = url_input.replace('https://', '').replace('http://', '').replace('www.', '').split('/')[0]
-            
-            doc_file = create_word_from_content(audit_content, site_name, type_audit)
-            
-            excel_file = None
-            if type_audit == "Full":
-                excel_file = create_excel_from_content(audit_content, site_name)
-            
-            progress_bar.progress(100)
-            status_text.text("✅ Complete!")
-            time.sleep(0.5)
-            
-            progress_bar.empty()
-            status_text.empty()
-            
-            # Results
-            st.markdown("---")
-            st.success("✅ Audit completed successfully!")
-            
-            tab1, tab2 = st.tabs(["📄 Preview", "📥 Download"])
-            
-            with tab1:
-                st.markdown('<div class="audit-report">', unsafe_allow_html=True)
-                st.markdown(audit_content)
-                st.markdown('</div>', unsafe_allow_html=True)
-            
-            with tab2:
-                st.markdown("### Download Your Documents")
-                
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    st.markdown("#### 📄 Audit Report")
-                    st.download_button(
-                        label="📥 Download Report (.docx)",
-                        data=doc_file,
-                        file_name=f"SEO_Audit_{site_name}_{datetime.now().strftime('%Y%m%d')}.docx",
-                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        use_container_width=True
-                    )
-                
-                with col2:
-                    if excel_file:
-                        st.markdown("#### 📊 Task List")
-                        st.download_button(
-                            label="📥 Download Tasks (.xlsx)",
-                            data=excel_file,
-                            file_name=f"SEO_Tasks_{site_name}_{datetime.now().strftime('%Y%m%d')}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            use_container_width=True
-                        )
-                    else:
-                        st.info("📊 Task list only for Full audits")
-
-# Footer
-st.markdown("---")
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    st.markdown("**Claudio SEO Auditor**")
-    st.caption("Professional audits in seconds")
-
-with col2:
-    st.markdown("**Powered by**")
-    st.caption("Anthropic • Google • Ahrefs")
-
-with col3:
-    st.markdown("**Need help?**")
-    st.caption("[Documentation](#) • [Support](#)")
-
+    if xlsx_out:
+        st.download_button(
+            "Download Tasks workbook (.xlsx)",
+            data=xlsx_out,
+            file_name=f"SEO_Tasks_{domain}_{datetime.utcnow().strftime('%Y%m%d')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+        )
