@@ -1117,7 +1117,7 @@ def build_issue_rows_for_xlsx(project_id: str, issues_list: list, max_rows_per_s
 def run_llm_text(selected_model_label: str, prompt_text: str) -> str:
     """Return raw text from the selected model."""
     if "Gemini" in selected_model_label:
-        model = genai.GenerativeModel("gemini-2.0-flash-exp")
+        model = genai.GenerativeModel("gemini-3-flash-preview")
         resp = model.generate_content(prompt_text)
         return (getattr(resp, "text", "") or "").strip()
 
@@ -1777,5 +1777,6 @@ with col2:
 with col3:
     st.markdown("**Need help?**")
     st.caption("[Documentation](#) • [Support](#)")
+
 
 
